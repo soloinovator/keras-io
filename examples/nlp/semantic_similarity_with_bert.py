@@ -6,6 +6,7 @@ Last modified: 2020/08/29
 Description: Natural Language Inference by fine-tuning BERT model on SNLI Corpus.
 Accelerator: GPU
 """
+
 """
 ## Introduction
 
@@ -150,7 +151,7 @@ class BertSemanticDataGenerator(tf.keras.utils.Sequence):
         labels: Array of labels.
         batch_size: Integer batch size.
         shuffle: boolean, whether to shuffle the data.
-        include_targets: boolean, whether to incude the labels.
+        include_targets: boolean, whether to include the labels.
 
     Returns:
         Tuples `([input_ids, attention_mask, `token_type_ids], labels)`

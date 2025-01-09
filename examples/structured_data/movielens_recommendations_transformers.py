@@ -2,7 +2,7 @@
 Title: A Transformer-based recommendation system
 Author: [Khalid Salama](https://www.linkedin.com/in/khalid-salama-24403144/)
 Date created: 2020/12/30
-Last modified: 2020/12/30
+Last modified: 2025/01/03
 Description: Rating rate prediction using the Behavior Sequence Transformer (BST) model on the Movielens.
 Accelerator: GPU
 """
@@ -51,15 +51,19 @@ as expected by the BST model.
 """
 
 import os
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
+
 import math
 from zipfile import ZipFile
 from urllib.request import urlretrieve
+
+import keras
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
-from tensorflow.keras.layers import StringLookup
+from keras import layers
+from keras.layers import StringLookup
 
 """
 ## Prepare the data
@@ -83,16 +87,24 @@ users = pd.read_csv(
     "ml-1m/users.dat",
     sep="::",
     names=["user_id", "sex", "age_group", "occupation", "zip_code"],
+    encoding="ISO-8859-1",
+    engine="python",
 )
 
 ratings = pd.read_csv(
     "ml-1m/ratings.dat",
     sep="::",
     names=["user_id", "movie_id", "rating", "unix_timestamp"],
+    encoding="ISO-8859-1",
+    engine="python",
 )
 
 movies = pd.read_csv(
-    "ml-1m/movies.dat", sep="::", names=["movie_id", "title", "genres"]
+    "ml-1m/movies.dat",
+    sep="::",
+    names=["movie_id", "title", "genres"],
+    encoding="ISO-8859-1",
+    engine="python",
 )
 
 """
@@ -114,26 +126,9 @@ Each movie has multiple genres. We split them into separate columns in the `movi
 DataFrame.
 """
 
-genres = [
-    "Action",
-    "Adventure",
-    "Animation",
-    "Children's",
-    "Comedy",
-    "Crime",
-    "Documentary",
-    "Drama",
-    "Fantasy",
-    "Film-Noir",
-    "Horror",
-    "Musical",
-    "Mystery",
-    "Romance",
-    "Sci-Fi",
-    "Thriller",
-    "War",
-    "Western",
-]
+genres = ["Action", "Adventure", "Animation", "Children's", "Comedy", "Crime"]
+genres += ["Documentary", "Drama", "Fantasy", "Film-Noir", "Horror", "Musical"]
+genres += ["Mystery", "Romance", "Sci-Fi", "Thriller", "War", "Western"]
 
 for genre in genres:
     movies[genre] = movies["genres"].apply(
@@ -264,7 +259,7 @@ MOVIE_FEATURES = ["genres"]
 """
 
 
-def get_dataset_from_csv(csv_file_path, shuffle=False, batch_size=128):
+def get_dataset_from_csv(csv_file_path, batch_size, shuffle=True):
     def process(features):
         movie_ids_string = features["sequence_movie_ids"]
         sequence_movie_ids = tf.strings.split(movie_ids_string, ",").to_tensor()
@@ -282,7 +277,7 @@ def get_dataset_from_csv(csv_file_path, shuffle=False, batch_size=128):
         target = sequence_ratings[:, -1]
         features["sequence_ratings"] = sequence_ratings[:, :-1]
 
-        return features, target
+        return dict(features), target
 
     dataset = tf.data.experimental.make_csv_dataset(
         csv_file_path,
@@ -304,19 +299,19 @@ def get_dataset_from_csv(csv_file_path, shuffle=False, batch_size=128):
 
 def create_model_inputs():
     return {
-        "user_id": layers.Input(name="user_id", shape=(1,), dtype=tf.string),
-        "sequence_movie_ids": layers.Input(
-            name="sequence_movie_ids", shape=(sequence_length - 1,), dtype=tf.string
+        "user_id": keras.Input(name="user_id", shape=(1,), dtype="string"),
+        "sequence_movie_ids": keras.Input(
+            name="sequence_movie_ids", shape=(sequence_length - 1,), dtype="string"
         ),
-        "target_movie_id": layers.Input(
-            name="target_movie_id", shape=(1,), dtype=tf.string
+        "target_movie_id": keras.Input(
+            name="target_movie_id", shape=(1,), dtype="string"
         ),
-        "sequence_ratings": layers.Input(
+        "sequence_ratings": keras.Input(
             name="sequence_ratings", shape=(sequence_length - 1,), dtype=tf.float32
         ),
-        "sex": layers.Input(name="sex", shape=(1,), dtype=tf.string),
-        "age_group": layers.Input(name="age_group", shape=(1,), dtype=tf.string),
-        "occupation": layers.Input(name="occupation", shape=(1,), dtype=tf.string),
+        "sex": keras.Input(name="sex", shape=(1,), dtype="string"),
+        "age_group": keras.Input(name="age_group", shape=(1,), dtype="string"),
+        "occupation": keras.Input(name="occupation", shape=(1,), dtype="string"),
     }
 
 
@@ -410,7 +405,7 @@ def encode_input_features(
     movie_genres_lookup = layers.Embedding(
         input_dim=genre_vectors.shape[0],
         output_dim=genre_vectors.shape[1],
-        embeddings_initializer=tf.keras.initializers.Constant(genre_vectors),
+        embeddings_initializer=keras.initializers.Constant(genre_vectors),
         trainable=False,
         name="genres_vector",
     )
@@ -450,17 +445,18 @@ def encode_input_features(
     positions = tf.range(start=0, limit=sequence_length - 1, delta=1)
     encodded_positions = position_embedding_encoder(positions)
     # Retrieve sequence ratings to incorporate them into the encoding of the movie.
-    sequence_ratings = tf.expand_dims(inputs["sequence_ratings"], -1)
+    sequence_ratings = inputs["sequence_ratings"]
+    sequence_ratings = keras.ops.expand_dims(sequence_ratings, -1)
     # Add the positional encoding to the movie encodings and multiply them by rating.
     encoded_sequence_movies_with_poistion_and_rating = layers.Multiply()(
         [(encoded_sequence_movies + encodded_positions), sequence_ratings]
     )
 
     # Construct the transformer inputs.
-    for encoded_movie in tf.unstack(
-        encoded_sequence_movies_with_poistion_and_rating, axis=1
-    ):
-        encoded_transformer_features.append(tf.expand_dims(encoded_movie, 1))
+    for i in range(sequence_length - 1):
+        feature = encoded_sequence_movies_with_poistion_and_rating[:, i, ...]
+        feature = keras.ops.expand_dims(feature, 1)
+        encoded_transformer_features.append(feature)
     encoded_transformer_features.append(encoded_target_movie)
 
     encoded_transformer_features = layers.concatenate(
@@ -537,10 +533,10 @@ model.compile(
 )
 
 # Read the training data.
-train_dataset = get_dataset_from_csv("train_data.csv", shuffle=True, batch_size=265)
+train_dataset = get_dataset_from_csv("train_data.csv", batch_size=265, shuffle=True)
 
 # Fit the model with the training data.
-model.fit(train_dataset, epochs=5)
+model.fit(train_dataset, epochs=2)
 
 # Read the test data.
 test_dataset = get_dataset_from_csv("test_data.csv", batch_size=265)

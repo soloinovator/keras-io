@@ -3,7 +3,7 @@ Title: Parameter-efficient fine-tuning of GPT-2 with LoRA
 Author: [Abheesht Sharma](https://github.com/abheesht17/), [Matthew Watson](https://github.com/mattdangerw/)
 Date created: 2023/05/27
 Last modified: 2023/05/27
-Description: Use KerasNLP to fine-tune a GPT-2 LLM with LoRA.
+Description: Use KerasHub to fine-tune a GPT-2 LLM with LoRA.
 Accelerator: GPU
 """
 
@@ -26,37 +26,45 @@ decrease in training time and GPU memory usage, while maintaining the quality
 of the outputs.
 
 In this example, we will explain LoRA in technical terms, show how the technical
-explanation translates to code, hack KerasNLP's
-[GPT-2 model](https://keras.io/api/keras_nlp/models/gpt2/) and fine-tune
+explanation translates to code, hack KerasHub's
+[GPT-2 model](https://keras.io/api/keras_hub/models/gpt2/) and fine-tune
 it on the next token prediction task using LoRA. We will compare LoRA GPT-2
 with a fully fine-tuned GPT-2 in terms of the quality of the generated text,
 training time and GPU memory usage.
+
+Note: This example runs on the TensorFlow backend purely for the
+`tf.config.experimental.get_memory_info` API to easily plot memory usage.
+Outside of the memory usage callback, this example will run on `jax` and `torch`
+backends.
 """
 
 """
 ## Setup
 
 Before we start implementing the pipeline, let's install and import all the
-libraries we need. We'll be using the KerasNLP library.
+libraries we need. We'll be using the KerasHub library.
 
 Secondly, let's enable mixed precision training. This will help us reduce the
 training time.
 """
 
 """shell
-pip install keras-nlp -q
+pip install -q --upgrade keras-hub
+pip install -q --upgrade keras  # Upgrade to Keras 3.
 """
 
-import keras_nlp
+import os
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
+
+import keras_hub
+import keras
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import tensorflow_datasets as tfds
 import time
 
-from tensorflow import keras
-
-policy = keras.mixed_precision.Policy("mixed_float16")
-keras.mixed_precision.set_global_policy(policy)
+keras.mixed_precision.set_global_policy("mixed_float16")
 
 """
 Let's also define our hyperparameters.
@@ -211,11 +219,11 @@ ability to predict long sequences, but will allow us to run this example quickly
 on Colab.
 """
 
-preprocessor = keras_nlp.models.GPT2CausalLMPreprocessor.from_preset(
+preprocessor = keras_hub.models.GPT2CausalLMPreprocessor.from_preset(
     "gpt2_base_en",
     sequence_length=MAX_SEQUENCE_LENGTH,
 )
-gpt2_lm = keras_nlp.models.GPT2CausalLM.from_preset(
+gpt2_lm = keras_hub.models.GPT2CausalLM.from_preset(
     "gpt2_base_en", preprocessor=preprocessor
 )
 
@@ -430,11 +438,11 @@ del loss
 tf.config.experimental.reset_memory_stats("GPU:0")
 
 # Load the original model.
-preprocessor = keras_nlp.models.GPT2CausalLMPreprocessor.from_preset(
+preprocessor = keras_hub.models.GPT2CausalLMPreprocessor.from_preset(
     "gpt2_base_en",
     sequence_length=128,
 )
-lora_model = keras_nlp.models.GPT2CausalLM.from_preset(
+lora_model = keras_hub.models.GPT2CausalLM.from_preset(
     "gpt2_base_en",
     preprocessor=preprocessor,
 )
@@ -448,6 +456,8 @@ for layer_idx in range(lora_model.backbone.num_layers):
     # Change query dense layer.
     decoder_layer = lora_model.backbone.get_layer(f"transformer_layer_{layer_idx}")
     self_attention_layer = decoder_layer._self_attention_layer
+    # Allow mutation to Keras layer state.
+    self_attention_layer._tracker.locked = False
 
     # Change query dense layer.
     self_attention_layer._query_dense = LoraLayer(
@@ -577,6 +587,10 @@ for layer_idx in range(lora_model.backbone.num_layers):
     B_weights = value_lora_layer.B.kernel  # (1, 12, 64) (b, c, d)
     increment_weights = tf.einsum("ab,bcd->acd", A_weights, B_weights) * (ALPHA / RANK)
     value_lora_layer.original_layer.kernel.assign_add(increment_weights)
+
+    # Put back in place the original layers with updated weights
+    self_attention_layer._query_dense = query_lora_layer.original_layer
+    self_attention_layer._value_dense = value_lora_layer.original_layer
 
 """
 We are now all set to generate text with our LoRA model :).

@@ -6,13 +6,18 @@ Last modified: 2020/04/20
 Description: Image segmentation model trained from scratch on the Oxford Pets dataset.
 Accelerator: GPU
 """
+
 """
 ## Download the data
 """
 
 """shell
-curl -O https://thor.robots.ox.ac.uk/~vgg/data/pets/images.tar.gz
-curl -O https://thor.robots.ox.ac.uk/~vgg/data/pets/annotations.tar.gz
+!wget https://www.robots.ox.ac.uk/~vgg/data/pets/data/images.tar.gz
+!wget https://www.robots.ox.ac.uk/~vgg/data/pets/data/annotations.tar.gz
+
+curl -O https://thor.robots.ox.ac.uk/datasets/pets/images.tar.gz
+curl -O https://thor.robots.ox.ac.uk/datasets/pets/annotations.tar.gz
+
 tar -xf images.tar.gz
 tar -xf annotations.tar.gz
 """
@@ -54,7 +59,7 @@ for input_path, target_path in zip(input_img_paths[:10], target_img_paths[:10]):
 """
 
 from IPython.display import Image, display
-from tensorflow.keras.utils import load_img
+from keras.utils import load_img
 from PIL import ImageOps
 
 # Display input image #7
@@ -65,49 +70,54 @@ img = ImageOps.autocontrast(load_img(target_img_paths[9]))
 display(img)
 
 """
-## Prepare `Sequence` class to load & vectorize batches of data
+## Prepare dataset to load & vectorize batches of data
 """
 
-from tensorflow import keras
+import keras
 import numpy as np
-from tensorflow.keras.utils import load_img
+from tensorflow import data as tf_data
+from tensorflow import image as tf_image
+from tensorflow import io as tf_io
 
 
-class OxfordPets(keras.utils.Sequence):
-    """Helper to iterate over the data (as Numpy arrays)."""
+def get_dataset(
+    batch_size,
+    img_size,
+    input_img_paths,
+    target_img_paths,
+    max_dataset_len=None,
+):
+    """Returns a TF Dataset."""
 
-    def __init__(self, batch_size, img_size, input_img_paths, target_img_paths):
-        self.batch_size = batch_size
-        self.img_size = img_size
-        self.input_img_paths = input_img_paths
-        self.target_img_paths = target_img_paths
+    def load_img_masks(input_img_path, target_img_path):
+        input_img = tf_io.read_file(input_img_path)
+        input_img = tf_io.decode_png(input_img, channels=3)
+        input_img = tf_image.resize(input_img, img_size)
+        input_img = tf_image.convert_image_dtype(input_img, "float32")
 
-    def __len__(self):
-        return len(self.target_img_paths) // self.batch_size
+        target_img = tf_io.read_file(target_img_path)
+        target_img = tf_io.decode_png(target_img, channels=1)
+        target_img = tf_image.resize(target_img, img_size, method="nearest")
+        target_img = tf_image.convert_image_dtype(target_img, "uint8")
 
-    def __getitem__(self, idx):
-        """Returns tuple (input, target) correspond to batch #idx."""
-        i = idx * self.batch_size
-        batch_input_img_paths = self.input_img_paths[i : i + self.batch_size]
-        batch_target_img_paths = self.target_img_paths[i : i + self.batch_size]
-        x = np.zeros((self.batch_size,) + self.img_size + (3,), dtype="float32")
-        for j, path in enumerate(batch_input_img_paths):
-            img = load_img(path, target_size=self.img_size)
-            x[j] = img
-        y = np.zeros((self.batch_size,) + self.img_size + (1,), dtype="uint8")
-        for j, path in enumerate(batch_target_img_paths):
-            img = load_img(path, target_size=self.img_size, color_mode="grayscale")
-            y[j] = np.expand_dims(img, 2)
-            # Ground truth labels are 1, 2, 3. Subtract one to make them 0, 1, 2:
-            y[j] -= 1
-        return x, y
+        # Ground truth labels are 1, 2, 3. Subtract one to make them 0, 1, 2:
+        target_img -= 1
+        return input_img, target_img
+
+    # For faster debugging, limit the size of data
+    if max_dataset_len:
+        input_img_paths = input_img_paths[:max_dataset_len]
+        target_img_paths = target_img_paths[:max_dataset_len]
+    dataset = tf_data.Dataset.from_tensor_slices((input_img_paths, target_img_paths))
+    dataset = dataset.map(load_img_masks, num_parallel_calls=tf_data.AUTOTUNE)
+    return dataset.batch(batch_size)
 
 
 """
 ## Prepare U-Net Xception-style model
 """
 
-from tensorflow.keras import layers
+from keras import layers
 
 
 def get_model(img_size, num_classes):
@@ -118,6 +128,7 @@ def get_model(img_size, num_classes):
     # Entry block
     x = layers.Conv2D(32, 3, strides=2, padding="same")(inputs)
     x = layers.BatchNormalization()(x)
+    x = layers.Activation("relu")(x)
 
     previous_block_activation = x  # Set aside residual
 
@@ -167,9 +178,6 @@ def get_model(img_size, num_classes):
     return model
 
 
-# Free up RAM in case the model definition cells were run multiple times
-keras.backend.clear_session()
-
 # Build model
 model = get_model(img_size, num_classes)
 model.summary()
@@ -189,11 +197,19 @@ train_target_img_paths = target_img_paths[:-val_samples]
 val_input_img_paths = input_img_paths[-val_samples:]
 val_target_img_paths = target_img_paths[-val_samples:]
 
-# Instantiate data Sequences for each split
-train_gen = OxfordPets(
-    batch_size, img_size, train_input_img_paths, train_target_img_paths
+# Instantiate dataset for each split
+# Limit input files in `max_dataset_len` for faster epoch training time.
+# Remove the `max_dataset_len` arg when running with full dataset.
+train_dataset = get_dataset(
+    batch_size,
+    img_size,
+    train_input_img_paths,
+    train_target_img_paths,
+    max_dataset_len=1000,
 )
-val_gen = OxfordPets(batch_size, img_size, val_input_img_paths, val_target_img_paths)
+valid_dataset = get_dataset(
+    batch_size, img_size, val_input_img_paths, val_target_img_paths
+)
 
 """
 ## Train the model
@@ -202,15 +218,23 @@ val_gen = OxfordPets(batch_size, img_size, val_input_img_paths, val_target_img_p
 # Configure the model for training.
 # We use the "sparse" version of categorical_crossentropy
 # because our target data is integers.
-model.compile(optimizer="rmsprop", loss="sparse_categorical_crossentropy")
+model.compile(
+    optimizer=keras.optimizers.Adam(1e-4), loss="sparse_categorical_crossentropy"
+)
 
 callbacks = [
-    keras.callbacks.ModelCheckpoint("oxford_segmentation.h5", save_best_only=True)
+    keras.callbacks.ModelCheckpoint("oxford_segmentation.keras", save_best_only=True)
 ]
 
 # Train the model, doing validation at the end of each epoch.
-epochs = 15
-model.fit(train_gen, epochs=epochs, validation_data=val_gen, callbacks=callbacks)
+epochs = 50
+model.fit(
+    train_dataset,
+    epochs=epochs,
+    validation_data=valid_dataset,
+    callbacks=callbacks,
+    verbose=2,
+)
 
 """
 ## Visualize predictions
@@ -218,8 +242,10 @@ model.fit(train_gen, epochs=epochs, validation_data=val_gen, callbacks=callbacks
 
 # Generate predictions for all images in the validation set
 
-val_gen = OxfordPets(batch_size, img_size, val_input_img_paths, val_target_img_paths)
-val_preds = model.predict(val_gen)
+val_dataset = get_dataset(
+    batch_size, img_size, val_input_img_paths, val_target_img_paths
+)
+val_preds = model.predict(val_dataset)
 
 
 def display_mask(i):

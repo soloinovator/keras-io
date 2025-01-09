@@ -1,5 +1,7 @@
 # KerasTuner
 
+<a class="github-button" href="https://github.com/keras-team/keras-tuner" data-size="large" data-show-count="true" aria-label="Star keras-team/keras-tuner on GitHub">Star</a>
+
 KerasTuner is an easy-to-use, scalable hyperparameter optimization framework
 that solves the pain points of hyperparameter search. Easily configure your
 search space with a define-by-run syntax, then leverage one of the available
@@ -11,16 +13,14 @@ experiment with new search algorithms.
 ---
 ## Quick links
 
-* [Getting started with KerasTuner](/guides/keras_tuner/getting_started/)
-* [KerasTuner developer guides](/guides/keras_tuner/)
-* [KerasTuner API reference](/api/keras_tuner/)
+* [Getting started with KerasTuner](/keras_tuner/getting_started/)
+* [Developer guides](/keras_tuner/guides)
+* [API documentation](/keras_tuner/api/)
 * [KerasTuner on GitHub](https://github.com/keras-team/keras-tuner)
 
 
 ---
 ## Installation
-
-KerasTuner requires **Python 3.6+** and **TensorFlow 2.0+**.
 
 Install the latest release:
 
@@ -39,7 +39,7 @@ Import KerasTuner and TensorFlow:
 
 ```python
 import keras_tuner
-from tensorflow import keras
+import keras
 ```
 
 Write a function that creates and returns a Keras model.
@@ -74,7 +74,8 @@ tuner.search(x_train, y_train, epochs=5, validation_data=(x_val, y_val))
 best_model = tuner.get_best_models()[0]
 ```
 
-To learn more about KerasTuner, check out [this starter guide](https://keras.io/guides/keras_tuner/getting_started/).
+To learn more about KerasTuner, check out the
+[getting stated guide](https://keras.io/guides/keras_tuner/getting_started/).
 
 
 ---

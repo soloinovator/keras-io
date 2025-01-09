@@ -6,6 +6,7 @@
 **Description:** Training a model to classify UK & Ireland accents using feature extraction from Yamnet.
 
 
+<div class='example_version_banner keras_2'>ⓘ This example uses Keras 2</div>
 <img class="k-inline-icon" src="https://colab.research.google.com/img/colab_favicon.ico"/> [**View in Colab**](https://colab.research.google.com/github/keras-team/keras-io/blob/master/examples/audio/ipynb/uk_ireland_accent_recognition.ipynb)  <span class="k-dot">•</span><img class="k-inline-icon" src="https://github.com/favicon.ico"/> [**GitHub source**](https://github.com/keras-team/keras-io/blob/master/examples/audio/uk_ireland_accent_recognition.py)
 
 
@@ -583,7 +584,7 @@ _________________________________________________________________
 ---
 ## Class weights calculation
 
-Since the dataset is quite unbalanced, we wil use `class_weight` argument during training.
+Since the dataset is quite unbalanced, we will use `class_weight` argument during training.
 
 Getting the class weights is a little tricky because even though we know the number of
 audio files for each class, it does not represent the number of samples for that class
@@ -1199,3 +1200,4 @@ _ = plt.ylim(-0.5 + np.array([len(class_names), 0]))
 
 
 ![png](/img/examples/audio/uk_ireland_accent_recognition/uk_ireland_accent_recognition_48_0.png)
+

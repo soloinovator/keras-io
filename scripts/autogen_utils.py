@@ -2,9 +2,14 @@ import re
 import string
 import markdown
 import copy
+import pathlib
+import os
 
 
 def save_file(path, content):
+    parent = pathlib.Path(path).parent
+    if not os.path.exists(parent):
+        os.makedirs(parent)
     f = open(path, "w", encoding="utf8")
     f.write(content)
     f.close()
@@ -77,10 +82,17 @@ def render_markdown_to_html(md_content):
             "tables",
             "codehilite",
             "mdx_truly_sane_lists",
+            "smarty",
         ],
         extension_configs={
             "codehilite": {
                 "guess_lang": False,
+            },
+            "smarty": {
+                "smart_dashes": True,
+                "smart_quotes": False,
+                "smart_angled_quotes": False,
+                "smart_ellipses": False,
             },
         },
     )

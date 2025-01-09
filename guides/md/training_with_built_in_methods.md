@@ -2,7 +2,7 @@
 
 **Author:** [fchollet](https://twitter.com/fchollet)<br>
 **Date created:** 2019/03/01<br>
-**Last modified:** 2023/03/20<br>
+**Last modified:** 2023/06/25<br>
 **Description:** Complete guide to training & evaluation with `fit()` and `evaluate()`.
 
 
@@ -15,9 +15,15 @@
 
 
 ```python
+# We import torch & TF so as to use torch Dataloaders & tf.data.Datasets.
+import torch
 import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
+
+import os
+import numpy as np
+import keras
+from keras import layers
+from keras import ops
 ```
 
 ---
@@ -28,28 +34,37 @@ when using built-in APIs for training & validation (such as `Model.fit()`,
 `Model.evaluate()` and `Model.predict()`).
 
 If you are interested in leveraging `fit()` while specifying your
-own training step function, see the
-[Customizing what happens in `fit()` guide](https://keras.io/guides/customizing_what_happens_in_fit/).
+own training step function, see the guides on customizing what happens in `fit()`:
+
+- [Writing a custom train step with TensorFlow](/guides/custom_train_step_in_tensorflow/)
+- [Writing a custom train step with JAX](/guides/custom_train_step_in_jax/)
+- [Writing a custom train step with PyTorch](/guides/custom_train_step_in_torch/)
 
 If you are interested in writing your own training & evaluation loops from
-scratch, see the guide
-["writing a training loop from scratch"](https://keras.io/guides/writing_a_training_loop_from_scratch/).
+scratch, see the guides on writing training loops:
+
+- [Writing a training loop with TensorFlow](/guides/writing_a_custom_training_loop_in_tensorflow/)
+- [Writing a training loop with JAX](/guides/writing_a_custom_training_loop_in_jax/)
+- [Writing a training loop with PyTorch](/guides/writing_a_custom_training_loop_in_torch/)
 
 In general, whether you are using built-in loops or writing your own, model training &
 evaluation works strictly in the same way across every kind of Keras model --
 Sequential models, models built with the Functional API, and models written from
 scratch via model subclassing.
 
-This guide doesn't cover distributed training, which is covered in our
-[guide to multi-GPU & distributed training](https://keras.io/guides/distributed_training/).
-
 ---
 ## API overview: a first end-to-end example
 
-When passing data to the built-in training loops of a model, you should either use
-**NumPy arrays** (if your data is small and fits in memory) or **`tf.data.Dataset`
-objects**. In the next few paragraphs, we'll use the MNIST dataset as NumPy arrays, in
-order to demonstrate how to use optimizers, losses, and metrics.
+When passing data to the built-in training loops of a model, you should either use:
+
+- NumPy arrays (if your data is small and fits in memory)
+- Subclasses of `keras.utils.PyDataset`
+- `tf.data.Dataset` objects
+- PyTorch `DataLoader` instances
+
+In the next few paragraphs, we'll use the MNIST dataset as NumPy arrays, in
+order to demonstrate how to use optimizers, losses, and metrics. Afterwards, we'll
+take a close look at each of the other options.
 
 Let's consider the following model (here, we build in with the Functional API, but it
 could be a Sequential model or a subclassed model as well):
@@ -126,9 +141,9 @@ history = model.fit(
 ```
 Fit model on training data
 Epoch 1/2
-782/782 [==============================] - 1s 1ms/step - loss: 0.3279 - sparse_categorical_accuracy: 0.9068 - val_loss: 0.1693 - val_sparse_categorical_accuracy: 0.9509
+ 782/782 ━━━━━━━━━━━━━━━━━━━━ 1s 955us/step - loss: 0.5740 - sparse_categorical_accuracy: 0.8368 - val_loss: 0.2040 - val_sparse_categorical_accuracy: 0.9420
 Epoch 2/2
-782/782 [==============================] - 1s 827us/step - loss: 0.1503 - sparse_categorical_accuracy: 0.9561 - val_loss: 0.1346 - val_sparse_categorical_accuracy: 0.9608
+ 782/782 ━━━━━━━━━━━━━━━━━━━━ 0s 390us/step - loss: 0.1745 - sparse_categorical_accuracy: 0.9492 - val_loss: 0.1415 - val_sparse_categorical_accuracy: 0.9581
 
 ```
 </div>
@@ -137,18 +152,12 @@ during training:
 
 
 ```python
-history.history
+print(history.history)
 ```
-
-
-
 
 <div class="k-default-codeblock">
 ```
-{'loss': [0.32786983251571655, 0.15031495690345764],
- 'sparse_categorical_accuracy': [0.9067999720573425, 0.9561399817466736],
- 'val_loss': [0.1692572385072708, 0.13455864787101746],
- 'val_sparse_categorical_accuracy': [0.9509000182151794, 0.9607999920845032]}
+{'loss': [0.34448376297950745, 0.16419583559036255], 'sparse_categorical_accuracy': [0.9008600115776062, 0.9509199857711792], 'val_loss': [0.20404714345932007, 0.14145156741142273], 'val_sparse_categorical_accuracy': [0.9419999718666077, 0.9581000208854675]}
 
 ```
 </div>
@@ -171,10 +180,10 @@ print("predictions shape:", predictions.shape)
 <div class="k-default-codeblock">
 ```
 Evaluate on test data
-79/79 [==============================] - 0s 559us/step - loss: 0.1395 - sparse_categorical_accuracy: 0.9599
-test loss, test acc: [0.1394539475440979, 0.9599000215530396]
+ 79/79 ━━━━━━━━━━━━━━━━━━━━ 0s 271us/step - loss: 0.1670 - sparse_categorical_accuracy: 0.9489
+test loss, test acc: [0.1484374850988388, 0.9550999999046326]
 Generate predictions for 3 samples
-1/1 [==============================] - 0s 39ms/step
+ 1/1 ━━━━━━━━━━━━━━━━━━━━ 0s 33ms/step
 predictions shape: (3, 10)
 
 ```
@@ -281,22 +290,22 @@ error between the real data and the predictions:
 ```python
 
 def custom_mean_squared_error(y_true, y_pred):
-    return tf.math.reduce_mean(tf.square(y_true - y_pred), axis=-1)
+    return ops.mean(ops.square(y_true - y_pred), axis=-1)
 
 
 model = get_uncompiled_model()
 model.compile(optimizer=keras.optimizers.Adam(), loss=custom_mean_squared_error)
 
 # We need to one-hot encode the labels to use MSE
-y_train_one_hot = tf.one_hot(y_train, depth=10)
+y_train_one_hot = ops.one_hot(y_train, num_classes=10)
 model.fit(x_train, y_train_one_hot, batch_size=64, epochs=1)
 ```
 
 <div class="k-default-codeblock">
 ```
-782/782 [==============================] - 1s 724us/step - loss: 0.0162
+ 782/782 ━━━━━━━━━━━━━━━━━━━━ 1s 525us/step - loss: 0.0277
 
-<keras.callbacks.History at 0x2be846200>
+<keras.src.callbacks.history.History at 0x2e5dde350>
 
 ```
 </div>
@@ -324,23 +333,24 @@ class CustomMSE(keras.losses.Loss):
         self.regularization_factor = regularization_factor
 
     def call(self, y_true, y_pred):
-        mse = tf.math.reduce_mean(tf.square(y_true - y_pred), axis=-1)
-        reg = tf.math.reduce_mean(tf.square(0.5 - y_pred), axis=-1)
+        mse = ops.mean(ops.square(y_true - y_pred), axis=-1)
+        reg = ops.mean(ops.square(0.5 - y_pred), axis=-1)
         return mse + reg * self.regularization_factor
 
 
 model = get_uncompiled_model()
 model.compile(optimizer=keras.optimizers.Adam(), loss=CustomMSE())
 
-y_train_one_hot = tf.one_hot(y_train, depth=10)
+y_train_one_hot = ops.one_hot(y_train, num_classes=10)
 model.fit(x_train, y_train_one_hot, batch_size=64, epochs=1)
+
 ```
 
 <div class="k-default-codeblock">
 ```
-782/782 [==============================] - 1s 730us/step - loss: 0.0389
+ 782/782 ━━━━━━━━━━━━━━━━━━━━ 1s 532us/step - loss: 0.0492
 
-<keras.callbacks.History at 0x2c99e79a0>
+<keras.src.callbacks.history.History at 0x2e5d0d360>
 
 ```
 </div>
@@ -369,19 +379,21 @@ that counts how many samples were correctly classified as belonging to a given c
 class CategoricalTruePositives(keras.metrics.Metric):
     def __init__(self, name="categorical_true_positives", **kwargs):
         super().__init__(name=name, **kwargs)
-        self.true_positives = self.add_weight(name="ctp", initializer="zeros")
+        self.true_positives = self.add_variable(
+            shape=(), name="ctp", initializer="zeros"
+        )
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        y_pred = tf.reshape(tf.argmax(y_pred, axis=1), shape=(-1, 1))
-        values = tf.cast(y_true, "int32") == tf.cast(y_pred, "int32")
-        values = tf.cast(values, "float32")
+        y_pred = ops.reshape(ops.argmax(y_pred, axis=1), (-1, 1))
+        values = ops.cast(y_true, "int32") == ops.cast(y_pred, "int32")
+        values = ops.cast(values, "float32")
         if sample_weight is not None:
-            sample_weight = tf.cast(sample_weight, "float32")
-            values = tf.multiply(values, sample_weight)
-        self.true_positives.assign_add(tf.reduce_sum(values))
+            sample_weight = ops.cast(sample_weight, "float32")
+            values = ops.multiply(values, sample_weight)
+        self.true_positives.assign_add(ops.sum(values))
 
     def result(self):
-        return self.true_positives
+        return self.true_positives.value
 
     def reset_state(self):
         # The state of the metric will be reset at the start of each epoch.
@@ -400,13 +412,13 @@ model.fit(x_train, y_train, batch_size=64, epochs=3)
 <div class="k-default-codeblock">
 ```
 Epoch 1/3
-782/782 [==============================] - 1s 651us/step - loss: 0.3405 - categorical_true_positives: 45086.0000
+ 782/782 ━━━━━━━━━━━━━━━━━━━━ 1s 568us/step - categorical_true_positives: 180967.9219 - loss: 0.5876
 Epoch 2/3
-782/782 [==============================] - 1s 649us/step - loss: 0.1585 - categorical_true_positives: 47621.0000
+ 782/782 ━━━━━━━━━━━━━━━━━━━━ 0s 377us/step - categorical_true_positives: 182141.9375 - loss: 0.1733
 Epoch 3/3
-782/782 [==============================] - 1s 654us/step - loss: 0.1145 - categorical_true_positives: 48267.0000
+ 782/782 ━━━━━━━━━━━━━━━━━━━━ 0s 377us/step - categorical_true_positives: 182303.5312 - loss: 0.1180
 
-<keras.callbacks.History at 0x2c9ff2410>
+<keras.src.callbacks.history.History at 0x2e5f02d10>
 
 ```
 </div>
@@ -428,7 +440,7 @@ this layer is just for the sake of providing a concrete example):
 
 class ActivityRegularizationLayer(layers.Layer):
     def call(self, inputs):
-        self.add_loss(tf.reduce_sum(inputs) * 0.1)
+        self.add_loss(ops.sum(inputs) * 0.1)
         return inputs  # Pass-through layer.
 
 
@@ -454,9 +466,9 @@ model.fit(x_train, y_train, batch_size=64, epochs=1)
 
 <div class="k-default-codeblock">
 ```
-782/782 [==============================] - 1s 626us/step - loss: 2.5206
+ 782/782 ━━━━━━━━━━━━━━━━━━━━ 1s 505us/step - loss: 3.4083
 
-<keras.callbacks.History at 0x2ca64d9c0>
+<keras.src.callbacks.history.History at 0x2e60226b0>
 
 ```
 </div>
@@ -481,7 +493,7 @@ class LogisticEndpoint(keras.layers.Layer):
         self.add_loss(loss)
 
         # Return the inference-time prediction tensor (for `.predict()`).
-        return tf.nn.softmax(logits)
+        return ops.softmax(logits)
 
 ```
 
@@ -490,8 +502,6 @@ You can use it in a model with two inputs (input data & targets), compiled witho
 
 
 ```python
-import numpy as np
-
 inputs = keras.Input(shape=(3,), name="inputs")
 targets = keras.Input(shape=(10,), name="targets")
 logits = keras.layers.Dense(10)(inputs)
@@ -509,9 +519,9 @@ model.fit(data)
 
 <div class="k-default-codeblock">
 ```
-1/1 [==============================] - 0s 130ms/step - loss: 0.7142
+ 1/1 ━━━━━━━━━━━━━━━━━━━━ 0s 89ms/step - loss: 0.6982
 
-<keras.callbacks.History at 0x2c9ff3250>
+<keras.src.callbacks.history.History at 0x2e5cc91e0>
 
 ```
 </div>
@@ -544,28 +554,29 @@ model.fit(x_train, y_train, batch_size=64, validation_split=0.2, epochs=1)
 
 <div class="k-default-codeblock">
 ```
-625/625 [==============================] - 1s 859us/step - loss: 0.3662 - sparse_categorical_accuracy: 0.8975 - val_loss: 0.2411 - val_sparse_categorical_accuracy: 0.9257
+ 625/625 ━━━━━━━━━━━━━━━━━━━━ 1s 563us/step - loss: 0.6161 - sparse_categorical_accuracy: 0.8259 - val_loss: 0.2379 - val_sparse_categorical_accuracy: 0.9302
 
-<keras.callbacks.History at 0x2bfd17be0>
+<keras.src.callbacks.history.History at 0x2e6007610>
 
 ```
 </div>
 ---
-## Training & evaluation from tf.data Datasets
+## Training & evaluation using `tf.data` Datasets
 
 In the past few paragraphs, you've seen how to handle losses, metrics, and optimizers,
 and you've seen how to use the `validation_data` and `validation_split` arguments in
 `fit()`, when your data is passed as NumPy arrays.
 
-Let's now take a look at the case where your data comes in the form of a
-`tf.data.Dataset` object.
+Another option is to use an iterator-like, such as a `tf.data.Dataset`, a
+PyTorch `DataLoader`, or a Keras `PyDataset`. Let's take look at the former.
 
 The `tf.data` API is a set of utilities in TensorFlow 2.0 for loading and preprocessing
-data in a way that's fast and scalable.
+data in a way that's fast and scalable. For a complete guide about creating `Datasets`,
+see the [tf.data documentation](https://www.tensorflow.org/guide/data).
 
-For a complete guide about creating `Datasets`, see the
-[tf.data documentation](https://www.tensorflow.org/guide/data).
-
+**You can use `tf.data` to train your Keras
+models regardless of the backend you're using --
+whether it's JAX, PyTorch, or TensorFlow.**
 You can pass a `Dataset` instance directly to the methods `fit()`, `evaluate()`, and
 `predict()`:
 
@@ -596,15 +607,15 @@ dict(zip(model.metrics_names, result))
 <div class="k-default-codeblock">
 ```
 Epoch 1/3
-782/782 [==============================] - 1s 654us/step - loss: 0.3434 - sparse_categorical_accuracy: 0.9032
+ 782/782 ━━━━━━━━━━━━━━━━━━━━ 1s 688us/step - loss: 0.5631 - sparse_categorical_accuracy: 0.8458
 Epoch 2/3
-782/782 [==============================] - 1s 652us/step - loss: 0.1672 - sparse_categorical_accuracy: 0.9501
+ 782/782 ━━━━━━━━━━━━━━━━━━━━ 0s 512us/step - loss: 0.1703 - sparse_categorical_accuracy: 0.9484
 Epoch 3/3
-782/782 [==============================] - 1s 652us/step - loss: 0.1233 - sparse_categorical_accuracy: 0.9628
+ 782/782 ━━━━━━━━━━━━━━━━━━━━ 0s 506us/step - loss: 0.1187 - sparse_categorical_accuracy: 0.9640
 Evaluate
-157/157 [==============================] - 0s 438us/step - loss: 0.1272 - sparse_categorical_accuracy: 0.9629
+ 157/157 ━━━━━━━━━━━━━━━━━━━━ 0s 622us/step - loss: 0.1380 - sparse_categorical_accuracy: 0.9582
 
-{'loss': 0.1272275298833847, 'sparse_categorical_accuracy': 0.9628999829292297}
+{'loss': 0.11913617700338364, 'compile_metrics': 0.965399980545044}
 
 ```
 </div>
@@ -614,10 +625,6 @@ next epoch.
 If you want to run training only on a specific number of batches from this Dataset, you
 can pass the `steps_per_epoch` argument, which specifies how many training steps the
 model should run using this Dataset before moving on to the next epoch.
-
-If you do this, the dataset is not reset at the end of each epoch, instead we just keep
-drawing the next batches. The dataset will eventually run out of data (unless it is an
-infinitely-looping dataset).
 
 
 ```python
@@ -634,19 +641,17 @@ model.fit(train_dataset, epochs=3, steps_per_epoch=100)
 <div class="k-default-codeblock">
 ```
 Epoch 1/3
-100/100 [==============================] - 0s 721us/step - loss: 0.8040 - sparse_categorical_accuracy: 0.7817
+ 100/100 ━━━━━━━━━━━━━━━━━━━━ 0s 508us/step - loss: 1.2000 - sparse_categorical_accuracy: 0.6822 
 Epoch 2/3
-100/100 [==============================] - 0s 677us/step - loss: 0.3770 - sparse_categorical_accuracy: 0.8948
+ 100/100 ━━━━━━━━━━━━━━━━━━━━ 0s 481us/step - loss: 0.4004 - sparse_categorical_accuracy: 0.8827
 Epoch 3/3
-100/100 [==============================] - 0s 645us/step - loss: 0.3214 - sparse_categorical_accuracy: 0.9066
+ 100/100 ━━━━━━━━━━━━━━━━━━━━ 0s 471us/step - loss: 0.3546 - sparse_categorical_accuracy: 0.8968
 
-<keras.callbacks.History at 0x2dcec1d80>
+<keras.src.callbacks.history.History at 0x2e64df400>
 
 ```
 </div>
-### Using a validation dataset
-
-You can pass a `Dataset` instance as the `validation_data` argument in `fit()`:
+You can also pass a `Dataset` instance as the `validation_data` argument in `fit()`:
 
 
 ```python
@@ -665,9 +670,9 @@ model.fit(train_dataset, epochs=1, validation_data=val_dataset)
 
 <div class="k-default-codeblock">
 ```
-782/782 [==============================] - 1s 798us/step - loss: 0.3373 - sparse_categorical_accuracy: 0.9057 - val_loss: 0.1994 - val_sparse_categorical_accuracy: 0.9396
+ 782/782 ━━━━━━━━━━━━━━━━━━━━ 1s 837us/step - loss: 0.5569 - sparse_categorical_accuracy: 0.8508 - val_loss: 0.1711 - val_sparse_categorical_accuracy: 0.9527
 
-<keras.callbacks.History at 0x2dee2ace0>
+<keras.src.callbacks.history.History at 0x2e641e920>
 
 ```
 </div>
@@ -703,9 +708,9 @@ model.fit(
 
 <div class="k-default-codeblock">
 ```
-782/782 [==============================] - 1s 736us/step - loss: 0.3438 - sparse_categorical_accuracy: 0.9005 - val_loss: 0.3076 - val_sparse_categorical_accuracy: 0.9219
+ 782/782 ━━━━━━━━━━━━━━━━━━━━ 1s 771us/step - loss: 0.5562 - sparse_categorical_accuracy: 0.8436 - val_loss: 0.3345 - val_sparse_categorical_accuracy: 0.9062
 
-<keras.callbacks.History at 0x2dee2a7a0>
+<keras.src.callbacks.history.History at 0x2f9542e00>
 
 ```
 </div>
@@ -718,34 +723,15 @@ ability to index the samples of the datasets, which is not possible in general w
 the `Dataset` API.
 
 ---
-## Other input formats supported
+## Training & evaluation using `PyDataset` instances
 
-Besides NumPy arrays, eager tensors, and TensorFlow `Datasets`, it's possible to train
-a Keras model using Pandas dataframes, or from Python generators that yield batches of
-data & labels.
-
-In particular, the `keras.utils.Sequence` class offers a simple interface to build
-Python data generators that are multiprocessing-aware and can be shuffled.
-
-In general, we recommend that you use:
-
-- NumPy input data if your data is small and fits in memory
-- `Dataset` objects if you have large datasets and you need to do distributed training
-- `Sequence` objects if you have large datasets and you need to do a lot of custom
-Python-side processing that cannot be done in TensorFlow (e.g. if you rely on external libraries
-for data loading or preprocessing).
-
-
----
-## Using a `keras.utils.Sequence` object as input
-
-`keras.utils.Sequence` is a utility that you can subclass to obtain a Python generator with
-two important properties:
+`keras.utils.PyDataset` is a utility that you can subclass to obtain
+a Python generator with two important properties:
 
 - It works well with multiprocessing.
 - It can be shuffled (e.g. when passing `shuffle=True` in `fit()`).
 
-A `Sequence` must implement two methods:
+A `PyDataset` must implement two methods:
 
 - `__getitem__`
 - `__len__`
@@ -755,33 +741,166 @@ If you want to modify your dataset between epochs, you may implement `on_epoch_e
 
 Here's a quick example:
 
+
 ```python
-from skimage.io import imread
-from skimage.transform import resize
-import numpy as np
 
-# Here, `filenames` is list of path to the images
-# and `labels` are the associated labels.
-
-class CIFAR10Sequence(Sequence):
-    def __init__(self, filenames, labels, batch_size):
-        self.filenames, self.labels = filenames, labels
+class ExamplePyDataset(keras.utils.PyDataset):
+    def __init__(self, x, y, batch_size, **kwargs):
+        super().__init__(**kwargs)
+        self.x = x
+        self.y = y
         self.batch_size = batch_size
 
     def __len__(self):
-        return int(np.ceil(len(self.filenames) / float(self.batch_size)))
+        return int(np.ceil(len(self.x) / float(self.batch_size)))
 
     def __getitem__(self, idx):
-        batch_x = self.filenames[idx * self.batch_size:(idx + 1) * self.batch_size]
-        batch_y = self.labels[idx * self.batch_size:(idx + 1) * self.batch_size]
-        return np.array([
-            resize(imread(filename), (200, 200))
-               for filename in batch_x]), np.array(batch_y)
+        batch_x = self.x[idx * self.batch_size : (idx + 1) * self.batch_size]
+        batch_y = self.y[idx * self.batch_size : (idx + 1) * self.batch_size]
+        return batch_x, batch_y
 
-sequence = CIFAR10Sequence(filenames, labels, batch_size)
-model.fit(sequence, epochs=10)
+
+train_py_dataset = ExamplePyDataset(x_train, y_train, batch_size=32)
+val_py_dataset = ExamplePyDataset(x_val, y_val, batch_size=32)
 ```
 
+To fit the model, pass the dataset instead as the `x` argument (no need for a `y`
+argument since the dataset includes the targets), and pass the validation dataset
+as the `validation_data` argument. And no need for the `batch_size` argument, since
+the dataset is already batched!
+
+
+```python
+model = get_compiled_model()
+model.fit(train_py_dataset, batch_size=64, validation_data=val_py_dataset, epochs=1)
+```
+
+<div class="k-default-codeblock">
+```
+ 1563/1563 ━━━━━━━━━━━━━━━━━━━━ 1s 443us/step - loss: 0.5217 - sparse_categorical_accuracy: 0.8473 - val_loss: 0.1576 - val_sparse_categorical_accuracy: 0.9525
+
+<keras.src.callbacks.history.History at 0x2f9c8d120>
+
+```
+</div>
+Evaluating the model is just as easy:
+
+
+```python
+model.evaluate(val_py_dataset)
+```
+
+<div class="k-default-codeblock">
+```
+ 313/313 ━━━━━━━━━━━━━━━━━━━━ 0s 157us/step - loss: 0.1821 - sparse_categorical_accuracy: 0.9450
+
+[0.15764616429805756, 0.9524999856948853]
+
+```
+</div>
+Importantly, `PyDataset` objects support three common constructor arguments
+that handle the parallel processing configuration:
+
+- `workers`: Number of workers to use in multithreading or
+    multiprocessing. Typically, you'd set it to the number of
+    cores on your CPU.
+- `use_multiprocessing`: Whether to use Python multiprocessing for
+    parallelism. Setting this to `True` means that your
+    dataset will be replicated in multiple forked processes.
+    This is necessary to gain compute-level (rather than I/O level)
+    benefits from parallelism. However it can only be set to
+    `True` if your dataset can be safely pickled.
+- `max_queue_size`: Maximum number of batches to keep in the queue
+    when iterating over the dataset in a multithreaded or
+    multipricessed setting.
+    You can reduce this value to reduce the CPU memory consumption of
+    your dataset. It defaults to 10.
+
+By default, multiprocessing is disabled (`use_multiprocessing=False`) and only
+one thread is used. You should make sure to only turn on `use_multiprocessing` if
+your code is running inside a Python `if __name__ == "__main__":` block in order
+to avoid issues.
+
+Here's a 4-thread, non-multiprocessed example:
+
+
+```python
+train_py_dataset = ExamplePyDataset(x_train, y_train, batch_size=32, workers=4)
+val_py_dataset = ExamplePyDataset(x_val, y_val, batch_size=32, workers=4)
+
+model = get_compiled_model()
+model.fit(train_py_dataset, batch_size=64, validation_data=val_py_dataset, epochs=1)
+```
+
+<div class="k-default-codeblock">
+```
+ 1563/1563 ━━━━━━━━━━━━━━━━━━━━ 1s 561us/step - loss: 0.5146 - sparse_categorical_accuracy: 0.8516 - val_loss: 0.1623 - val_sparse_categorical_accuracy: 0.9514
+
+<keras.src.callbacks.history.History at 0x2e7fd5ea0>
+
+```
+</div>
+---
+## Training & evaluation using PyTorch `DataLoader` objects
+
+All built-in training and evaluation APIs are also compatible with `torch.utils.data.Dataset` and
+`torch.utils.data.DataLoader` objects -- regardless of whether you're using the PyTorch backend,
+or the JAX or TensorFlow backends. Let's take a look at a simple example.
+
+Unlike `PyDataset` which are batch-centric, PyTorch `Dataset` objects are sample-centric:
+the `__len__` method returns the number of samples,
+and the `__getitem__` method returns a specific sample.
+
+
+```python
+
+class ExampleTorchDataset(torch.utils.data.Dataset):
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+    def __len__(self):
+        return len(self.x)
+
+    def __getitem__(self, idx):
+        return self.x[idx], self.y[idx]
+
+
+train_torch_dataset = ExampleTorchDataset(x_train, y_train)
+val_torch_dataset = ExampleTorchDataset(x_val, y_val)
+```
+
+To use a PyTorch Dataset, you need to wrap it into a `Dataloader` which takes care
+of batching and shuffling:
+
+
+```python
+train_dataloader = torch.utils.data.DataLoader(
+    train_torch_dataset, batch_size=32, shuffle=True
+)
+val_dataloader = torch.utils.data.DataLoader(
+    val_torch_dataset, batch_size=32, shuffle=True
+)
+```
+
+Now you can use them in the Keras API just like any other iterator:
+
+
+```python
+model = get_compiled_model()
+model.fit(train_dataloader, batch_size=64, validation_data=val_dataloader, epochs=1)
+model.evaluate(val_dataloader)
+```
+
+<div class="k-default-codeblock">
+```
+ 1563/1563 ━━━━━━━━━━━━━━━━━━━━ 1s 575us/step - loss: 0.5051 - sparse_categorical_accuracy: 0.8568 - val_loss: 0.1613 - val_sparse_categorical_accuracy: 0.9528
+ 313/313 ━━━━━━━━━━━━━━━━━━━━ 0s 278us/step - loss: 0.1551 - sparse_categorical_accuracy: 0.9541
+
+[0.16209803521633148, 0.9527999758720398]
+
+```
+</div>
 ---
 ## Using sample weighting and class weighting
 
@@ -810,8 +929,6 @@ is the digit "5" in the MNIST dataset).
 
 
 ```python
-import numpy as np
-
 class_weight = {
     0: 1.0,
     1: 1.0,
@@ -835,9 +952,9 @@ model.fit(x_train, y_train, class_weight=class_weight, batch_size=64, epochs=1)
 <div class="k-default-codeblock">
 ```
 Fit with class weight
-782/782 [==============================] - 1s 788us/step - loss: 0.3734 - sparse_categorical_accuracy: 0.9001
+ 782/782 ━━━━━━━━━━━━━━━━━━━━ 1s 534us/step - loss: 0.6205 - sparse_categorical_accuracy: 0.8375
 
-<keras.callbacks.History at 0x2df2c5870>
+<keras.src.callbacks.history.History at 0x298d44eb0>
 
 ```
 </div>
@@ -873,9 +990,9 @@ model.fit(x_train, y_train, sample_weight=sample_weight, batch_size=64, epochs=1
 <div class="k-default-codeblock">
 ```
 Fit with sample weight
-782/782 [==============================] - 1s 774us/step - loss: 0.3796 - sparse_categorical_accuracy: 0.8994
+ 782/782 ━━━━━━━━━━━━━━━━━━━━ 1s 546us/step - loss: 0.6397 - sparse_categorical_accuracy: 0.8388
 
-<keras.callbacks.History at 0x2dfdfb0a0>
+<keras.src.callbacks.history.History at 0x298e066e0>
 
 ```
 </div>
@@ -899,9 +1016,9 @@ model.fit(train_dataset, epochs=1)
 
 <div class="k-default-codeblock">
 ```
-782/782 [==============================] - 1s 770us/step - loss: 0.3813 - sparse_categorical_accuracy: 0.8980
+ 782/782 ━━━━━━━━━━━━━━━━━━━━ 1s 651us/step - loss: 0.5971 - sparse_categorical_accuracy: 0.8445
 
-<keras.callbacks.History at 0x2e8489ba0>
+<keras.src.callbacks.history.History at 0x312854100>
 
 ```
 </div>
@@ -951,7 +1068,7 @@ keras.utils.plot_model(model, "multi_input_and_output_model.png", show_shapes=Tr
 
 
     
-![png](/img/guides/training_with_built_in_methods/training_with_built_in_methods_60_0.png)
+![png](/img/guides/training_with_built_in_methods/training_with_built_in_methods_73_0.png)
     
 
 
@@ -963,7 +1080,10 @@ the loss functions as a list:
 ```python
 model.compile(
     optimizer=keras.optimizers.RMSprop(1e-3),
-    loss=[keras.losses.MeanSquaredError(), keras.losses.CategoricalCrossentropy()],
+    loss=[
+        keras.losses.MeanSquaredError(),
+        keras.losses.CategoricalCrossentropy(),
+    ],
 )
 ```
 
@@ -976,7 +1096,10 @@ Likewise for metrics:
 ```python
 model.compile(
     optimizer=keras.optimizers.RMSprop(1e-3),
-    loss=[keras.losses.MeanSquaredError(), keras.losses.CategoricalCrossentropy()],
+    loss=[
+        keras.losses.MeanSquaredError(),
+        keras.losses.CategoricalCrossentropy(),
+    ],
     metrics=[
         [
             keras.metrics.MeanAbsolutePercentageError(),
@@ -1060,7 +1183,10 @@ names to NumPy arrays**.
 ```python
 model.compile(
     optimizer=keras.optimizers.RMSprop(1e-3),
-    loss=[keras.losses.MeanSquaredError(), keras.losses.CategoricalCrossentropy()],
+    loss=[
+        keras.losses.MeanSquaredError(),
+        keras.losses.CategoricalCrossentropy(),
+    ],
 )
 
 # Generate dummy NumPy data
@@ -1083,10 +1209,10 @@ model.fit(
 
 <div class="k-default-codeblock">
 ```
-4/4 [==============================] - 0s 2ms/step - loss: 17.9793 - score_output_loss: 0.8241 - class_output_loss: 17.1552
-4/4 [==============================] - 0s 2ms/step - loss: 17.4074 - score_output_loss: 0.4417 - class_output_loss: 16.9657
+ 4/4 ━━━━━━━━━━━━━━━━━━━━ 0s 62ms/step - loss: 18.0146
+ 4/4 ━━━━━━━━━━━━━━━━━━━━ 0s 56ms/step - loss: 17.6494
 
-<keras.callbacks.History at 0x172d289d0>
+<keras.src.callbacks.history.History at 0x31a6c5810>
 
 ```
 </div>
@@ -1108,9 +1234,9 @@ model.fit(train_dataset, epochs=1)
 
 <div class="k-default-codeblock">
 ```
-2/2 [==============================] - 0s 4ms/step - loss: 17.1425 - score_output_loss: 0.3657 - class_output_loss: 16.7768
+ 2/2 ━━━━━━━━━━━━━━━━━━━━ 0s 197ms/step - loss: 17.8578
 
-<keras.callbacks.History at 0x2e841fd90>
+<keras.src.callbacks.history.History at 0x17c7e5690>
 
 ```
 </div>
@@ -1161,20 +1287,22 @@ model.fit(
 <div class="k-default-codeblock">
 ```
 Epoch 1/20
-625/625 [==============================] - 1s 996us/step - loss: 0.3714 - sparse_categorical_accuracy: 0.8941 - val_loss: 0.2579 - val_sparse_categorical_accuracy: 0.9196
+ 625/625 ━━━━━━━━━━━━━━━━━━━━ 1s 622us/step - loss: 0.6245 - sparse_categorical_accuracy: 0.8275 - val_loss: 0.2231 - val_sparse_categorical_accuracy: 0.9330
 Epoch 2/20
-625/625 [==============================] - 1s 804us/step - loss: 0.1778 - sparse_categorical_accuracy: 0.9474 - val_loss: 0.1823 - val_sparse_categorical_accuracy: 0.9463
+ 625/625 ━━━━━━━━━━━━━━━━━━━━ 0s 404us/step - loss: 0.1809 - sparse_categorical_accuracy: 0.9460 - val_loss: 0.1727 - val_sparse_categorical_accuracy: 0.9476
 Epoch 3/20
-625/625 [==============================] - 0s 782us/step - loss: 0.1281 - sparse_categorical_accuracy: 0.9609 - val_loss: 0.1523 - val_sparse_categorical_accuracy: 0.9551
+ 625/625 ━━━━━━━━━━━━━━━━━━━━ 0s 398us/step - loss: 0.1336 - sparse_categorical_accuracy: 0.9598 - val_loss: 0.1564 - val_sparse_categorical_accuracy: 0.9545
 Epoch 4/20
-625/625 [==============================] - 0s 789us/step - loss: 0.1018 - sparse_categorical_accuracy: 0.9696 - val_loss: 0.1319 - val_sparse_categorical_accuracy: 0.9618
+ 625/625 ━━━━━━━━━━━━━━━━━━━━ 0s 400us/step - loss: 0.1012 - sparse_categorical_accuracy: 0.9699 - val_loss: 0.1502 - val_sparse_categorical_accuracy: 0.9570
 Epoch 5/20
-625/625 [==============================] - 0s 784us/step - loss: 0.0825 - sparse_categorical_accuracy: 0.9748 - val_loss: 0.1362 - val_sparse_categorical_accuracy: 0.9614
+ 625/625 ━━━━━━━━━━━━━━━━━━━━ 0s 403us/step - loss: 0.0835 - sparse_categorical_accuracy: 0.9748 - val_loss: 0.1436 - val_sparse_categorical_accuracy: 0.9589
 Epoch 6/20
-625/625 [==============================] - 0s 758us/step - loss: 0.0697 - sparse_categorical_accuracy: 0.9781 - val_loss: 0.1368 - val_sparse_categorical_accuracy: 0.9630
-Epoch 6: early stopping
+ 625/625 ━━━━━━━━━━━━━━━━━━━━ 0s 396us/step - loss: 0.0699 - sparse_categorical_accuracy: 0.9783 - val_loss: 0.1484 - val_sparse_categorical_accuracy: 0.9577
+Epoch 7/20
+ 625/625 ━━━━━━━━━━━━━━━━━━━━ 0s 402us/step - loss: 0.0603 - sparse_categorical_accuracy: 0.9814 - val_loss: 0.1406 - val_sparse_categorical_accuracy: 0.9629
+Epoch 7: early stopping
 
-<keras.callbacks.History at 0x2eb507f10>
+<keras.src.callbacks.history.History at 0x31ae37c10>
 
 ```
 </div>
@@ -1242,22 +1370,27 @@ callbacks = [
     )
 ]
 model.fit(
-    x_train, y_train, epochs=2, batch_size=64, callbacks=callbacks, validation_split=0.2
+    x_train,
+    y_train,
+    epochs=2,
+    batch_size=64,
+    callbacks=callbacks,
+    validation_split=0.2,
 )
 ```
 
 <div class="k-default-codeblock">
 ```
 Epoch 1/2
-620/625 [============================>.] - ETA: 0s - loss: 0.3738 - sparse_categorical_accuracy: 0.8948
-Epoch 1: val_loss improved from inf to 0.23125, saving model to mymodel_1.keras
-625/625 [==============================] - 1s 1ms/step - loss: 0.3721 - sparse_categorical_accuracy: 0.8953 - val_loss: 0.2312 - val_sparse_categorical_accuracy: 0.9310
+ 559/625 ━━━━━━━━━━━━━━━━━[37m━━━  0s 360us/step - loss: 0.6490 - sparse_categorical_accuracy: 0.8209
+Epoch 1: val_loss improved from inf to 0.22393, saving model to mymodel_1.keras
+ 625/625 ━━━━━━━━━━━━━━━━━━━━ 1s 577us/step - loss: 0.6194 - sparse_categorical_accuracy: 0.8289 - val_loss: 0.2239 - val_sparse_categorical_accuracy: 0.9340
 Epoch 2/2
-624/625 [============================>.] - ETA: 0s - loss: 0.1713 - sparse_categorical_accuracy: 0.9486
-Epoch 2: val_loss improved from 0.23125 to 0.17349, saving model to mymodel_2.keras
-625/625 [==============================] - 0s 763us/step - loss: 0.1712 - sparse_categorical_accuracy: 0.9487 - val_loss: 0.1735 - val_sparse_categorical_accuracy: 0.9485
+ 565/625 ━━━━━━━━━━━━━━━━━━[37m━━  0s 355us/step - loss: 0.1816 - sparse_categorical_accuracy: 0.9476
+Epoch 2: val_loss improved from 0.22393 to 0.16868, saving model to mymodel_2.keras
+ 625/625 ━━━━━━━━━━━━━━━━━━━━ 0s 411us/step - loss: 0.1806 - sparse_categorical_accuracy: 0.9479 - val_loss: 0.1687 - val_sparse_categorical_accuracy: 0.9494
 
-<keras.callbacks.History at 0x2ed68f970>
+<keras.src.callbacks.history.History at 0x2e5cb7250>
 
 ```
 </div>
@@ -1267,8 +1400,6 @@ gets randomly interrupted. Here's a basic example:
 
 
 ```python
-import os
-
 # Prepare a directory to store all the checkpoints.
 checkpoint_dir = "./ckpt"
 if not os.path.exists(checkpoint_dir):
@@ -1301,9 +1432,9 @@ model.fit(x_train, y_train, epochs=1, callbacks=callbacks)
 <div class="k-default-codeblock">
 ```
 Creating a new model
-1563/1563 [==============================] - 1s 624us/step - loss: 0.3077 - sparse_categorical_accuracy: 0.9120
+ 1563/1563 ━━━━━━━━━━━━━━━━━━━━ 1s 390us/step - loss: 0.4910 - sparse_categorical_accuracy: 0.8623
 
-<keras.callbacks.History at 0x2dbdc5420>
+<keras.src.callbacks.history.History at 0x2e5c454e0>
 
 ```
 </div>
@@ -1351,7 +1482,7 @@ thus achieve this pattern by using a callback that modifies the current learning
 on the optimizer. In fact, this is even built-in as the `ReduceLROnPlateau` callback.
 
 ---
-## Visualizing loss and metrics during training
+## Visualizing loss and metrics during training with TensorBoard
 
 The best way to keep an eye on your model during training is to use
 [TensorBoard](https://www.tensorflow.org/tensorboard) -- a browser-based application
@@ -1392,7 +1523,7 @@ keras.callbacks.TensorBoard(
 
 <div class="k-default-codeblock">
 ```
-<keras.callbacks.TensorBoard at 0x2bfc04160>
+<keras.src.callbacks.tensorboard.TensorBoard at 0x31b0188b0>
 
 ```
 </div>
