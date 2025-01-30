@@ -6,6 +6,7 @@ Last modified: 2023/02/05
 Description: Implementing DreamBooth.
 Accelerator: GPU
 """
+
 """
 ## Introduction
 
@@ -30,7 +31,7 @@ First, let's install the latest versions of KerasCV and TensorFlow.
 """
 
 """shell
-pip install -q -U keras_cv
+pip install -q -U keras_cv==0.6.0
 pip install -q -U tensorflow
 """
 
@@ -457,9 +458,9 @@ class DreamBoothTrainer(tf.keras.Model):
 
     def get_timestep_embedding(self, timestep, dim=320, max_period=10000):
         half = dim // 2
-        log_max_preiod = tf.math.log(tf.cast(max_period, tf.float32))
+        log_max_period = tf.math.log(tf.cast(max_period, tf.float32))
         freqs = tf.math.exp(
-            -log_max_preiod * tf.range(0, half, dtype=tf.float32) / half
+            -log_max_period * tf.range(0, half, dtype=tf.float32) / half
         )
         args = tf.convert_to_tensor([timestep], dtype=tf.float32) * freqs
         embedding = tf.concat([tf.math.cos(args), tf.math.sin(args)], 0)
@@ -524,7 +525,7 @@ tf.keras.mixed_precision.set_global_policy("mixed_float16")
 
 use_mp = True  # Set it to False if you're not using a GPU with tensor cores.
 
-image_encoder = keras_cv.models.stable_diffusion.ImageEncoder(resolution, resolution)
+image_encoder = keras_cv.models.stable_diffusion.ImageEncoder()
 dreambooth_trainer = DreamBoothTrainer(
     diffusion_model=keras_cv.models.stable_diffusion.DiffusionModel(
         resolution, resolution, max_prompt_length
@@ -633,7 +634,7 @@ images_dreamboothed = dreambooth_model.text_to_image(
 plot_images(images_dreamboothed, prompt)
 
 """
-Feel free to experiment with different prompts (don't forget to add the unique identifer
+Feel free to experiment with different prompts (don't forget to add the unique identifier
 and the class label!) to see how the results change. We welcome you to check out our
 codebase and more experimental results
 [here](https://github.com/sayakpaul/dreambooth-keras#results). You can also read

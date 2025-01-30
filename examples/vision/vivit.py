@@ -2,10 +2,11 @@
 Title: Video Vision Transformer
 Author: [Aritra Roy Gosthipaty](https://twitter.com/ariG23498), [Ayush Thakur](https://twitter.com/ayushthakur0) (equal contribution)
 Date created: 2022/01/12
-Last modified:  2022/01/12
+Last modified:  2024/01/15
 Description: A Transformer-based architecture for video classification.
 Accelerator: GPU
 """
+
 """
 ## Introduction
 
@@ -30,8 +31,8 @@ and a number of Transformer variants to model video clips. We implement
 the embedding scheme and one of the variants of the Transformer
 architecture, for simplicity.
 
-This example requires TensorFlow 2.6 or higher, and the `medmnist`
-package, which can be installed by running the code cell below.
+This example requires  `medmnist` package, which can be installed
+by running the code cell below.
 """
 
 """shell
@@ -48,9 +49,9 @@ import imageio
 import medmnist
 import ipywidgets
 import numpy as np
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
+import tensorflow as tf  # for data preprocessing only
+import keras
+from keras import layers, ops
 
 # Setting seed for reproducibility
 SEED = 42
@@ -137,7 +138,6 @@ prepared_dataset = download_and_prepare_dataset(info)
 """
 
 
-@tf.function
 def preprocess(frames: tf.Tensor, label: tf.Tensor):
     """Preprocess the frames tensors and parse the labels."""
     # Preprocess images
@@ -235,7 +235,7 @@ class PositionalEncoder(layers.Layer):
         self.position_embedding = layers.Embedding(
             input_dim=num_tokens, output_dim=self.embed_dim
         )
-        self.positions = tf.range(start=0, limit=num_tokens, delta=1)
+        self.positions = ops.arange(0, num_tokens, 1)
 
     def call(self, encoded_tokens):
         # Encode the positions and add it to the encoded tokens
@@ -295,8 +295,8 @@ def create_vivit_classifier(
         x3 = layers.LayerNormalization(epsilon=1e-6)(x2)
         x3 = keras.Sequential(
             [
-                layers.Dense(units=embed_dim * 4, activation=tf.nn.gelu),
-                layers.Dense(units=embed_dim, activation=tf.nn.gelu),
+                layers.Dense(units=embed_dim * 4, activation=ops.gelu),
+                layers.Dense(units=embed_dim, activation=ops.gelu),
             ]
         )(x3)
 
@@ -367,12 +367,13 @@ videos = []
 
 for i, (testsample, label) in enumerate(zip(testsamples, labels)):
     # Generate gif
+    testsample = np.reshape(testsample.numpy(), (-1, 28, 28))
     with io.BytesIO() as gif:
-        imageio.mimsave(gif, (testsample.numpy() * 255).astype("uint8"), "GIF", fps=5)
+        imageio.mimsave(gif, (testsample * 255).astype("uint8"), "GIF", fps=5)
         videos.append(gif.getvalue())
 
     # Get model prediction
-    output = model.predict(tf.expand_dims(testsample, axis=0))[0]
+    output = model.predict(ops.expand_dims(testsample, axis=0))[0]
     pred = np.argmax(output, axis=0)
 
     ground_truths.append(label.numpy().astype("int"))

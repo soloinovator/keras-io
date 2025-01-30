@@ -1,11 +1,13 @@
 """
 Title: A Vision Transformer without Attention
-Author: [Aritra Roy Gosthipaty](https://twitter.com/ariG23498), [Ritwik Raha](https://twitter.com/ritwik_raha)
+Author: [Aritra Roy Gosthipaty](https://twitter.com/ariG23498), [Ritwik Raha](https://twitter.com/ritwik_raha), [Shivalika Singh](https://www.linkedin.com/in/shivalika-singh/)
 Date created: 2022/02/24
-Last modified: 2022/03/01
+Last modified: 2024/12/06
 Description: A minimal implementation of ShiftViT.
 Accelerator: GPU
+Converted to Keras 3 by: [Sitam Meur](https://github.com/sitamgithub-MSIT)
 """
+
 """
 ## Introduction
 
@@ -26,12 +28,7 @@ operation with a shifting operation.
 In this example, we minimally implement the paper with close alignement to the author's
 [official implementation](https://github.com/microsoft/SPACH/blob/main/models/shiftvit.py).
 
-This example requires TensorFlow 2.6 or higher, as well as TensorFlow Addons, which can
-be installed using the following command:
-
-```shell
-pip install -qq -U tensorflow-addons
-```
+This example requires TensorFlow 2.9 or higher.
 """
 
 """
@@ -41,11 +38,13 @@ pip install -qq -U tensorflow-addons
 import numpy as np
 import matplotlib.pyplot as plt
 
+import keras
+from keras import ops
+from keras import layers
 import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
 
-import tensorflow_addons as tfa
+import pathlib
+import glob
 
 # Setting seed for reproducibiltiy
 SEED = 42
@@ -87,6 +86,21 @@ class Config(object):
 
     # TRAINING
     epochs = 100
+
+    # INFERENCE
+    label_map = {
+        0: "airplane",
+        1: "automobile",
+        2: "bird",
+        3: "cat",
+        4: "deer",
+        5: "dog",
+        6: "frog",
+        7: "horse",
+        8: "ship",
+        9: "truck",
+    }
+    tf_ds_batch_size = 20
 
 
 config = Config()
@@ -200,7 +214,7 @@ The Shift Block as shown in Fig. 3, comprises of the following:
 """
 #### The MLP block
 
-The MLP block is intended to be a stack of densely-connected layers.s
+The MLP block is intended to be a stack of densely-connected layers
 """
 
 
@@ -225,7 +239,7 @@ class MLP(layers.Layer):
             [
                 layers.Dense(
                     units=initial_filters,
-                    activation=tf.nn.gelu,
+                    activation="gelu",
                 ),
                 layers.Dropout(rate=self.mlp_dropout_rate),
                 layers.Dense(units=input_channels),
@@ -259,13 +273,16 @@ class DropPath(layers.Layer):
     def __init__(self, drop_path_prob, **kwargs):
         super().__init__(**kwargs)
         self.drop_path_prob = drop_path_prob
+        self.seed_generator = keras.random.SeedGenerator(1337)
 
     def call(self, x, training=False):
         if training:
             keep_prob = 1 - self.drop_path_prob
-            shape = (tf.shape(x)[0],) + (1,) * (len(tf.shape(x)) - 1)
-            random_tensor = keep_prob + tf.random.uniform(shape, 0, 1)
-            random_tensor = tf.floor(random_tensor)
+            shape = (ops.shape(x)[0],) + (1,) * (len(ops.shape(x)) - 1)
+            random_tensor = keep_prob + keras.random.uniform(
+                shape, 0, 1, seed=self.seed_generator
+            )
+            random_tensor = ops.floor(random_tensor)
             return (x / keep_prob) * random_tensor
         return x
 
@@ -273,7 +290,7 @@ class DropPath(layers.Layer):
 """
 #### Block
 
-The most important operation in this paper is the **shift opperation**. In this section,
+The most important operation in this paper is the **shift operation**. In this section,
 we describe the shift operation and compare it with its original implementation provided
 by the authors.
 
@@ -379,17 +396,17 @@ class ShiftViTBlock(layers.Layer):
             offset_width = 0
             target_height = self.shift_pixel
             target_width = 0
-        crop = tf.image.crop_to_bounding_box(
+        crop = ops.image.crop_images(
             x,
-            offset_height=offset_height,
-            offset_width=offset_width,
+            top_cropping=offset_height,
+            left_cropping=offset_width,
             target_height=self.H - target_height,
             target_width=self.W - target_width,
         )
-        shift_pad = tf.image.pad_to_bounding_box(
+        shift_pad = ops.image.pad_images(
             crop,
-            offset_height=offset_height,
-            offset_width=offset_width,
+            top_padding=offset_height,
+            left_padding=offset_width,
             target_height=self.H,
             target_width=self.W,
         )
@@ -397,7 +414,7 @@ class ShiftViTBlock(layers.Layer):
 
     def call(self, x, training=False):
         # Split the feature maps
-        x_splits = tf.split(x, num_or_size_splits=self.C // self.num_div, axis=-1)
+        x_splits = ops.split(x, indices_or_sections=self.C // self.num_div, axis=-1)
 
         # Shift the feature maps
         x_splits[0] = self.get_shift_pad(x_splits[0], mode="left")
@@ -406,7 +423,7 @@ class ShiftViTBlock(layers.Layer):
         x_splits[3] = self.get_shift_pad(x_splits[3], mode="down")
 
         # Concatenate the shifted and unshifted feature maps
-        x = tf.concat(x_splits, axis=-1)
+        x = ops.concatenate(x_splits, axis=-1)
 
         # Add the residual connection
         shortcut = x
@@ -545,6 +562,24 @@ class StackedShiftBlocks(layers.Layer):
             x = self.patch_merge(x)
         return x
 
+    # Since this is a custom layer, we need to overwrite get_config()
+    # so that model can be easily saved & loaded after training
+    def get_config(self):
+        config = super().get_config()
+        config.update(
+            {
+                "epsilon": self.epsilon,
+                "mlp_dropout_rate": self.mlp_dropout_rate,
+                "num_shift_blocks": self.num_shift_blocks,
+                "stochastic_depth_rate": self.stochastic_depth_rate,
+                "is_merge": self.is_merge,
+                "num_div": self.num_div,
+                "shift_pixel": self.shift_pixel,
+                "mlp_expand_ratio": self.mlp_expand_ratio,
+            }
+        )
+        return config
+
 
 """
 ## The ShiftViT model
@@ -617,6 +652,8 @@ class ShiftViTModel(keras.Model):
             )
         self.global_avg_pool = layers.GlobalAveragePooling2D()
 
+        self.classifier = layers.Dense(config.num_classes)
+
     def get_config(self):
         config = super().get_config()
         config.update(
@@ -625,6 +662,7 @@ class ShiftViTModel(keras.Model):
                 "patch_projection": self.patch_projection,
                 "stages": self.stages,
                 "global_avg_pool": self.global_avg_pool,
+                "classifier": self.classifier,
             }
         )
         return config
@@ -644,7 +682,8 @@ class ShiftViTModel(keras.Model):
             x = stage(x, training=training)
 
         # Get the logits.
-        logits = self.global_avg_pool(x)
+        x = self.global_avg_pool(x)
+        logits = self.classifier(x)
 
         # Calculate the loss and return it.
         total_loss = self.compiled_loss(labels, logits)
@@ -661,6 +700,7 @@ class ShiftViTModel(keras.Model):
             self.data_augmentation.trainable_variables,
             self.patch_projection.trainable_variables,
             self.global_avg_pool.trainable_variables,
+            self.classifier.trainable_variables,
         ]
         train_vars = train_vars + [stage.trainable_variables for stage in self.stages]
 
@@ -682,6 +722,15 @@ class ShiftViTModel(keras.Model):
         # Update the metrics
         self.compiled_metrics.update_state(labels, logits)
         return {m.name: m.result() for m in self.metrics}
+
+    def call(self, images):
+        augmented_images = self.data_augmentation(images)
+        x = self.patch_projection(augmented_images)
+        for stage in self.stages:
+            x = stage(x, training=False)
+        x = self.global_avg_pool(x)
+        logits = self.classifier(x)
+        return logits
 
 
 """
@@ -730,7 +779,7 @@ class WarmUpCosine(keras.optimizers.schedules.LearningRateSchedule):
         self.lr_max = lr_max
         self.warmup_steps = warmup_steps
         self.total_steps = total_steps
-        self.pi = tf.constant(np.pi)
+        self.pi = ops.array(np.pi)
 
     def __call__(self, step):
         # Check whether the total number of steps is larger than the warmup
@@ -744,10 +793,10 @@ class WarmUpCosine(keras.optimizers.schedules.LearningRateSchedule):
         # `cos_annealed_lr` is a graph that increases to 1 from the initial
         # step to the warmup step. After that this graph decays to -1 at the
         # final step mark.
-        cos_annealed_lr = tf.cos(
+        cos_annealed_lr = ops.cos(
             self.pi
-            * (tf.cast(step, tf.float32) - self.warmup_steps)
-            / tf.cast(self.total_steps - self.warmup_steps, tf.float32)
+            * (ops.cast(step, dtype="float32") - self.warmup_steps)
+            / ops.cast(self.total_steps - self.warmup_steps, dtype="float32")
         )
 
         # Shift the mean of the `cos_annealed_lr` graph to 1. Now the grpah goes
@@ -772,25 +821,37 @@ class WarmUpCosine(keras.optimizers.schedules.LearningRateSchedule):
 
             # With the formula for a straight line (y = mx+c) build the warmup
             # schedule
-            warmup_rate = slope * tf.cast(step, tf.float32) + self.lr_start
+            warmup_rate = slope * ops.cast(step, dtype="float32") + self.lr_start
 
             # When the current step is lesser that warmup steps, get the line
             # graph. When the current step is greater than the warmup steps, get
             # the scaled cos graph.
-            learning_rate = tf.where(
+            learning_rate = ops.where(
                 step < self.warmup_steps, warmup_rate, learning_rate
             )
 
         # When the current step is more that the total steps, return 0 else return
         # the calculated graph.
-        return tf.where(
-            step > self.total_steps, 0.0, learning_rate, name="learning_rate"
-        )
+        return ops.where(step > self.total_steps, 0.0, learning_rate)
+
+    def get_config(self):
+        config = {
+            "lr_start": self.lr_start,
+            "lr_max": self.lr_max,
+            "total_steps": self.total_steps,
+            "warmup_steps": self.warmup_steps,
+        }
+        return config
 
 
 """
 ## Compile and train the model
 """
+
+# pass sample data to the model so that input shape is available at the time of
+# saving the model
+sample_ds, _ = next(iter(train_ds))
+model(sample_ds, training=False)
 
 # Get the total number of steps for training.
 total_steps = int((len(x_train) / config.batch_size) * config.epochs)
@@ -808,7 +869,7 @@ scheduled_lrs = WarmUpCosine(
 )
 
 # Get the optimizer.
-optimizer = tfa.optimizers.AdamW(
+optimizer = keras.optimizers.AdamW(
     learning_rate=scheduled_lrs, weight_decay=config.weight_decay
 )
 
@@ -844,6 +905,122 @@ print(f"Top 1 test accuracy: {acc_top1*100:0.2f}%")
 print(f"Top 5 test accuracy: {acc_top5*100:0.2f}%")
 
 """
+## Save trained model
+
+Since we created the model by Subclassing, we can't save the model in HDF5 format.
+
+It can be saved in TF SavedModel format only. In general, this is the recommended format for saving models as well.
+"""
+model.export("ShiftViT")
+
+"""
+## Model inference
+"""
+
+"""
+**Download sample data for inference**
+"""
+
+"""shell
+wget -q 'https://tinyurl.com/2p9483sw' -O inference_set.zip
+unzip -q inference_set.zip
+"""
+
+
+"""
+**Load saved model**
+"""
+# Using TFSMLayer to reload the TF SavedModel as a Keras layer.
+# This is not limited to SavedModels that originate from Keras – it will work with any SavedModel, e.g. TF-Hub models.
+saved_model = keras.layers.TFSMLayer("ShiftViT", call_endpoint="serving_default")
+
+"""
+**Utility functions for inference**
+"""
+
+
+def process_image(img_path):
+    # read image file from string path
+    img = tf.io.read_file(img_path)
+
+    # decode jpeg to uint8 tensor
+    img = tf.io.decode_jpeg(img, channels=3)
+
+    # resize image to match input size accepted by model
+    # use `interpolation` as `nearest` to preserve dtype of input passed to `resize()`
+    img = ops.image.resize(
+        img, [config.input_shape[0], config.input_shape[1]], interpolation="nearest"
+    )
+    return img
+
+
+def create_tf_dataset(image_dir):
+    data_dir = pathlib.Path(image_dir)
+
+    # create tf.data dataset using directory of images
+    predict_ds = tf.data.Dataset.list_files(str(data_dir / "*.jpg"), shuffle=False)
+
+    # use map to convert string paths to uint8 image tensors
+    # setting `num_parallel_calls' helps in processing multiple images parallely
+    predict_ds = predict_ds.map(process_image, num_parallel_calls=AUTO)
+
+    # create a Prefetch Dataset for better latency & throughput
+    predict_ds = predict_ds.batch(config.tf_ds_batch_size).prefetch(AUTO)
+    return predict_ds
+
+
+def predict(predict_ds):
+    # ShiftViT model returns logits (non-normalized predictions)
+    model = keras.Sequential([saved_model])
+    output_dict = model.predict(predict_ds)
+    logits = list(output_dict.values())[0]
+
+    # normalize predictions by calling softmax()
+    probabilities = ops.softmax(logits)
+    return probabilities
+
+
+def get_predicted_class(probabilities):
+    pred_label = np.argmax(probabilities)
+    predicted_class = config.label_map[pred_label]
+    return predicted_class
+
+
+def get_confidence_scores(probabilities):
+    # get the indices of the probability scores sorted in descending order
+    labels = np.argsort(probabilities)[::-1]
+    confidences = {
+        config.label_map[label]: np.round((probabilities[label]) * 100, 2)
+        for label in labels
+    }
+    return confidences
+
+
+"""
+**Get predictions**
+"""
+
+img_dir = "inference_set"
+predict_ds = create_tf_dataset(img_dir)
+probabilities = predict(predict_ds)
+print(f"probabilities: {probabilities[0]}")
+confidences = get_confidence_scores(probabilities[0])
+print(confidences)
+
+"""
+**View predictions**
+"""
+
+plt.figure(figsize=(10, 10))
+for images in predict_ds:
+    for i in range(min(6, probabilities.shape[0])):
+        ax = plt.subplot(3, 3, i + 1)
+        plt.imshow(images[i].numpy().astype("uint8"))
+        predicted_class = get_predicted_class(probabilities[i])
+        plt.title(predicted_class)
+        plt.axis("off")
+
+"""
 ## Conclusion
 
 The most impactful contribution of the paper is not the novel architecture, but
@@ -865,4 +1042,12 @@ GPU credits.
 library.
 - A personal note of thanks to [Puja Roychowdhury](https://twitter.com/pleb_talks) for
 helping us with the Learning Rate Schedule.
+"""
+
+"""
+**Example available on HuggingFace**
+
+| Trained Model | Demo |
+| :--: | :--: |
+| [![Generic badge](https://img.shields.io/badge/%F0%9F%A4%97%20Model-ShiftViT-brightgreen)](https://huggingface.co/keras-io/shiftvit) | [![Generic badge](https://img.shields.io/badge/%F0%9F%A4%97%20Space-ShiftViT-brightgreen)](https://huggingface.co/spaces/keras-io/shiftvit) |
 """

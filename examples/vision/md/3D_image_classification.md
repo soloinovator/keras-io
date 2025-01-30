@@ -2,7 +2,7 @@
 
 **Author:** [Hasib Zunair](https://twitter.com/hasibzunair)<br>
 **Date created:** 2020/09/23<br>
-**Last modified:** 2020/09/23<br>
+**Last modified:** 2024/01/11<br>
 **Description:** Train a 3D convolutional neural network to predict presence of pneumonia.
 
 
@@ -22,9 +22,9 @@ equivalent: it takes as input a 3D volume or a sequence of 2D frames (e.g. slice
 ---
 ## References
 
-- [A survey on Deep Learning Advances on Different 3D DataRepresentations](https://arxiv.org/pdf/1808.01462.pdf)
+- [A survey on Deep Learning Advances on Different 3D DataRepresentations](https://arxiv.org/abs/1808.01462)
 - [VoxNet: A 3D Convolutional Neural Network for Real-Time Object Recognition](https://www.ri.cmu.edu/pub_files/2015/9/voxnet_maturana_scherer_iros15.pdf)
-- [FusionNet: 3D Object Classification Using MultipleData Representations](http://3ddl.cs.princeton.edu/2016/papers/Hegde_Zadeh.pdf)
+- [FusionNet: 3D Object Classification Using MultipleData Representations](https://arxiv.org/abs/1607.05695)
 - [Uniformizing Techniques to Process CT scans with 3D CNNs for Tuberculosis Prediction](https://arxiv.org/abs/2007.13224)
 
 ---
@@ -35,10 +35,10 @@ equivalent: it takes as input a 3D volume or a sequence of 2D frames (e.g. slice
 import os
 import zipfile
 import numpy as np
-import tensorflow as tf
+import tensorflow as tf  # for data preprocessing
 
-from tensorflow import keras
-from tensorflow.keras import layers
+import keras
+from keras import layers
 ```
 
 ---
@@ -78,12 +78,13 @@ with zipfile.ZipFile("CT-23.zip", "r") as z_fp:
 <div class="k-default-codeblock">
 ```
 Downloading data from https://github.com/hasibzunair/3D-image-classification-tutorial/releases/download/v0.2/CT-0.zip
-1065476096/1065471431 [==============================] - 236s 0us/step
-Downloading data from https://github.com/hasibzunair/3D-image-classification-tutorial/releases/download/v0.2/CT-23.zip
- 271171584/1045162547 [======>.......................] - ETA: 2:56
 
 ```
 </div>
+
+ 1045162547/1045162547 ━━━━━━━━━━━━━━━━━━━━ 4s 0us/step
+
+
 ---
 ## Loading data and preprocessing
 
@@ -248,7 +249,6 @@ import random
 from scipy import ndimage
 
 
-@tf.function
 def rotate(volume):
     """Rotate the volume by a few degrees"""
 
@@ -328,11 +328,13 @@ plt.imshow(np.squeeze(image[:, :, 30]), cmap="gray")
 ```
 Dimension of the CT scan is: (128, 128, 64, 1)
 
-<matplotlib.image.AxesImage at 0x7fea680354e0>
+<matplotlib.image.AxesImage at 0x7fc5b9900d50>
 
 ```
 </div>
+    
 ![png](/img/examples/vision/3D_image_classification/3D_image_classification_17_2.png)
+    
 
 
 Since a CT scan has many slices, let's visualize a montage of the slices.
@@ -370,7 +372,9 @@ plot_slices(4, 10, 128, 128, image[:, :, :40])
 ```
 
 
+    
 ![png](/img/examples/vision/3D_image_classification/3D_image_classification_19_0.png)
+    
 
 
 ---
@@ -420,53 +424,77 @@ model = get_model(width=128, height=128, depth=64)
 model.summary()
 ```
 
-<div class="k-default-codeblock">
-```
-Model: "3dcnn"
-_________________________________________________________________
-Layer (type)                 Output Shape              Param #   
-=================================================================
-input_1 (InputLayer)         [(None, 128, 128, 64, 1)] 0         
-_________________________________________________________________
-conv3d (Conv3D)              (None, 126, 126, 62, 64)  1792      
-_________________________________________________________________
-max_pooling3d (MaxPooling3D) (None, 63, 63, 31, 64)    0         
-_________________________________________________________________
-batch_normalization (BatchNo (None, 63, 63, 31, 64)    256       
-_________________________________________________________________
-conv3d_1 (Conv3D)            (None, 61, 61, 29, 64)    110656    
-_________________________________________________________________
-max_pooling3d_1 (MaxPooling3 (None, 30, 30, 14, 64)    0         
-_________________________________________________________________
-batch_normalization_1 (Batch (None, 30, 30, 14, 64)    256       
-_________________________________________________________________
-conv3d_2 (Conv3D)            (None, 28, 28, 12, 128)   221312    
-_________________________________________________________________
-max_pooling3d_2 (MaxPooling3 (None, 14, 14, 6, 128)    0         
-_________________________________________________________________
-batch_normalization_2 (Batch (None, 14, 14, 6, 128)    512       
-_________________________________________________________________
-conv3d_3 (Conv3D)            (None, 12, 12, 4, 256)    884992    
-_________________________________________________________________
-max_pooling3d_3 (MaxPooling3 (None, 6, 6, 2, 256)      0         
-_________________________________________________________________
-batch_normalization_3 (Batch (None, 6, 6, 2, 256)      1024      
-_________________________________________________________________
-global_average_pooling3d (Gl (None, 256)               0         
-_________________________________________________________________
-dense (Dense)                (None, 512)               131584    
-_________________________________________________________________
-dropout (Dropout)            (None, 512)               0         
-_________________________________________________________________
-dense_1 (Dense)              (None, 1)                 513       
-=================================================================
-Total params: 1,352,897
-Trainable params: 1,351,873
-Non-trainable params: 1,024
-_________________________________________________________________
 
-```
-</div>
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace"><span style="font-weight: bold">Model: "3dcnn"</span>
+</pre>
+
+
+
+
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace">┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┓
+┃<span style="font-weight: bold"> Layer (type)                    </span>┃<span style="font-weight: bold"> Output Shape              </span>┃<span style="font-weight: bold">    Param # </span>┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━┩
+│ input_layer (<span style="color: #0087ff; text-decoration-color: #0087ff">InputLayer</span>)        │ (<span style="color: #00d7ff; text-decoration-color: #00d7ff">None</span>, <span style="color: #00af00; text-decoration-color: #00af00">128</span>, <span style="color: #00af00; text-decoration-color: #00af00">128</span>, <span style="color: #00af00; text-decoration-color: #00af00">64</span>, <span style="color: #00af00; text-decoration-color: #00af00">1</span>)   │          <span style="color: #00af00; text-decoration-color: #00af00">0</span> │
+├─────────────────────────────────┼───────────────────────────┼────────────┤
+│ conv3d (<span style="color: #0087ff; text-decoration-color: #0087ff">Conv3D</span>)                 │ (<span style="color: #00d7ff; text-decoration-color: #00d7ff">None</span>, <span style="color: #00af00; text-decoration-color: #00af00">126</span>, <span style="color: #00af00; text-decoration-color: #00af00">126</span>, <span style="color: #00af00; text-decoration-color: #00af00">62</span>, <span style="color: #00af00; text-decoration-color: #00af00">64</span>)  │      <span style="color: #00af00; text-decoration-color: #00af00">1,792</span> │
+├─────────────────────────────────┼───────────────────────────┼────────────┤
+│ max_pooling3d (<span style="color: #0087ff; text-decoration-color: #0087ff">MaxPooling3D</span>)    │ (<span style="color: #00d7ff; text-decoration-color: #00d7ff">None</span>, <span style="color: #00af00; text-decoration-color: #00af00">63</span>, <span style="color: #00af00; text-decoration-color: #00af00">63</span>, <span style="color: #00af00; text-decoration-color: #00af00">31</span>, <span style="color: #00af00; text-decoration-color: #00af00">64</span>)    │          <span style="color: #00af00; text-decoration-color: #00af00">0</span> │
+├─────────────────────────────────┼───────────────────────────┼────────────┤
+│ batch_normalization             │ (<span style="color: #00d7ff; text-decoration-color: #00d7ff">None</span>, <span style="color: #00af00; text-decoration-color: #00af00">63</span>, <span style="color: #00af00; text-decoration-color: #00af00">63</span>, <span style="color: #00af00; text-decoration-color: #00af00">31</span>, <span style="color: #00af00; text-decoration-color: #00af00">64</span>)    │        <span style="color: #00af00; text-decoration-color: #00af00">256</span> │
+│ (<span style="color: #0087ff; text-decoration-color: #0087ff">BatchNormalization</span>)            │                           │            │
+├─────────────────────────────────┼───────────────────────────┼────────────┤
+│ conv3d_1 (<span style="color: #0087ff; text-decoration-color: #0087ff">Conv3D</span>)               │ (<span style="color: #00d7ff; text-decoration-color: #00d7ff">None</span>, <span style="color: #00af00; text-decoration-color: #00af00">61</span>, <span style="color: #00af00; text-decoration-color: #00af00">61</span>, <span style="color: #00af00; text-decoration-color: #00af00">29</span>, <span style="color: #00af00; text-decoration-color: #00af00">64</span>)    │    <span style="color: #00af00; text-decoration-color: #00af00">110,656</span> │
+├─────────────────────────────────┼───────────────────────────┼────────────┤
+│ max_pooling3d_1 (<span style="color: #0087ff; text-decoration-color: #0087ff">MaxPooling3D</span>)  │ (<span style="color: #00d7ff; text-decoration-color: #00d7ff">None</span>, <span style="color: #00af00; text-decoration-color: #00af00">30</span>, <span style="color: #00af00; text-decoration-color: #00af00">30</span>, <span style="color: #00af00; text-decoration-color: #00af00">14</span>, <span style="color: #00af00; text-decoration-color: #00af00">64</span>)    │          <span style="color: #00af00; text-decoration-color: #00af00">0</span> │
+├─────────────────────────────────┼───────────────────────────┼────────────┤
+│ batch_normalization_1           │ (<span style="color: #00d7ff; text-decoration-color: #00d7ff">None</span>, <span style="color: #00af00; text-decoration-color: #00af00">30</span>, <span style="color: #00af00; text-decoration-color: #00af00">30</span>, <span style="color: #00af00; text-decoration-color: #00af00">14</span>, <span style="color: #00af00; text-decoration-color: #00af00">64</span>)    │        <span style="color: #00af00; text-decoration-color: #00af00">256</span> │
+│ (<span style="color: #0087ff; text-decoration-color: #0087ff">BatchNormalization</span>)            │                           │            │
+├─────────────────────────────────┼───────────────────────────┼────────────┤
+│ conv3d_2 (<span style="color: #0087ff; text-decoration-color: #0087ff">Conv3D</span>)               │ (<span style="color: #00d7ff; text-decoration-color: #00d7ff">None</span>, <span style="color: #00af00; text-decoration-color: #00af00">28</span>, <span style="color: #00af00; text-decoration-color: #00af00">28</span>, <span style="color: #00af00; text-decoration-color: #00af00">12</span>, <span style="color: #00af00; text-decoration-color: #00af00">128</span>)   │    <span style="color: #00af00; text-decoration-color: #00af00">221,312</span> │
+├─────────────────────────────────┼───────────────────────────┼────────────┤
+│ max_pooling3d_2 (<span style="color: #0087ff; text-decoration-color: #0087ff">MaxPooling3D</span>)  │ (<span style="color: #00d7ff; text-decoration-color: #00d7ff">None</span>, <span style="color: #00af00; text-decoration-color: #00af00">14</span>, <span style="color: #00af00; text-decoration-color: #00af00">14</span>, <span style="color: #00af00; text-decoration-color: #00af00">6</span>, <span style="color: #00af00; text-decoration-color: #00af00">128</span>)    │          <span style="color: #00af00; text-decoration-color: #00af00">0</span> │
+├─────────────────────────────────┼───────────────────────────┼────────────┤
+│ batch_normalization_2           │ (<span style="color: #00d7ff; text-decoration-color: #00d7ff">None</span>, <span style="color: #00af00; text-decoration-color: #00af00">14</span>, <span style="color: #00af00; text-decoration-color: #00af00">14</span>, <span style="color: #00af00; text-decoration-color: #00af00">6</span>, <span style="color: #00af00; text-decoration-color: #00af00">128</span>)    │        <span style="color: #00af00; text-decoration-color: #00af00">512</span> │
+│ (<span style="color: #0087ff; text-decoration-color: #0087ff">BatchNormalization</span>)            │                           │            │
+├─────────────────────────────────┼───────────────────────────┼────────────┤
+│ conv3d_3 (<span style="color: #0087ff; text-decoration-color: #0087ff">Conv3D</span>)               │ (<span style="color: #00d7ff; text-decoration-color: #00d7ff">None</span>, <span style="color: #00af00; text-decoration-color: #00af00">12</span>, <span style="color: #00af00; text-decoration-color: #00af00">12</span>, <span style="color: #00af00; text-decoration-color: #00af00">4</span>, <span style="color: #00af00; text-decoration-color: #00af00">256</span>)    │    <span style="color: #00af00; text-decoration-color: #00af00">884,992</span> │
+├─────────────────────────────────┼───────────────────────────┼────────────┤
+│ max_pooling3d_3 (<span style="color: #0087ff; text-decoration-color: #0087ff">MaxPooling3D</span>)  │ (<span style="color: #00d7ff; text-decoration-color: #00d7ff">None</span>, <span style="color: #00af00; text-decoration-color: #00af00">6</span>, <span style="color: #00af00; text-decoration-color: #00af00">6</span>, <span style="color: #00af00; text-decoration-color: #00af00">2</span>, <span style="color: #00af00; text-decoration-color: #00af00">256</span>)      │          <span style="color: #00af00; text-decoration-color: #00af00">0</span> │
+├─────────────────────────────────┼───────────────────────────┼────────────┤
+│ batch_normalization_3           │ (<span style="color: #00d7ff; text-decoration-color: #00d7ff">None</span>, <span style="color: #00af00; text-decoration-color: #00af00">6</span>, <span style="color: #00af00; text-decoration-color: #00af00">6</span>, <span style="color: #00af00; text-decoration-color: #00af00">2</span>, <span style="color: #00af00; text-decoration-color: #00af00">256</span>)      │      <span style="color: #00af00; text-decoration-color: #00af00">1,024</span> │
+│ (<span style="color: #0087ff; text-decoration-color: #0087ff">BatchNormalization</span>)            │                           │            │
+├─────────────────────────────────┼───────────────────────────┼────────────┤
+│ global_average_pooling3d        │ (<span style="color: #00d7ff; text-decoration-color: #00d7ff">None</span>, <span style="color: #00af00; text-decoration-color: #00af00">256</span>)               │          <span style="color: #00af00; text-decoration-color: #00af00">0</span> │
+│ (<span style="color: #0087ff; text-decoration-color: #0087ff">GlobalAveragePooling3D</span>)        │                           │            │
+├─────────────────────────────────┼───────────────────────────┼────────────┤
+│ dense (<span style="color: #0087ff; text-decoration-color: #0087ff">Dense</span>)                   │ (<span style="color: #00d7ff; text-decoration-color: #00d7ff">None</span>, <span style="color: #00af00; text-decoration-color: #00af00">512</span>)               │    <span style="color: #00af00; text-decoration-color: #00af00">131,584</span> │
+├─────────────────────────────────┼───────────────────────────┼────────────┤
+│ dropout (<span style="color: #0087ff; text-decoration-color: #0087ff">Dropout</span>)               │ (<span style="color: #00d7ff; text-decoration-color: #00d7ff">None</span>, <span style="color: #00af00; text-decoration-color: #00af00">512</span>)               │          <span style="color: #00af00; text-decoration-color: #00af00">0</span> │
+├─────────────────────────────────┼───────────────────────────┼────────────┤
+│ dense_1 (<span style="color: #0087ff; text-decoration-color: #0087ff">Dense</span>)                 │ (<span style="color: #00d7ff; text-decoration-color: #00d7ff">None</span>, <span style="color: #00af00; text-decoration-color: #00af00">1</span>)                 │        <span style="color: #00af00; text-decoration-color: #00af00">513</span> │
+└─────────────────────────────────┴───────────────────────────┴────────────┘
+</pre>
+
+
+
+
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace"><span style="font-weight: bold"> Total params: </span><span style="color: #00af00; text-decoration-color: #00af00">1,352,897</span> (5.16 MB)
+</pre>
+
+
+
+
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace"><span style="font-weight: bold"> Trainable params: </span><span style="color: #00af00; text-decoration-color: #00af00">1,351,873</span> (5.16 MB)
+</pre>
+
+
+
+
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace"><span style="font-weight: bold"> Non-trainable params: </span><span style="color: #00af00; text-decoration-color: #00af00">1,024</span> (4.00 KB)
+</pre>
+
+
+
 ---
 ## Train model
 
@@ -481,11 +509,12 @@ model.compile(
     loss="binary_crossentropy",
     optimizer=keras.optimizers.Adam(learning_rate=lr_schedule),
     metrics=["acc"],
+    run_eagerly=True,
 )
 
 # Define callbacks.
 checkpoint_cb = keras.callbacks.ModelCheckpoint(
-    "3d_image_classification.h5", save_best_only=True
+    "3d_image_classification.keras", save_best_only=True
 )
 early_stopping_cb = keras.callbacks.EarlyStopping(monitor="val_acc", patience=15)
 
@@ -504,69 +533,118 @@ model.fit(
 <div class="k-default-codeblock">
 ```
 Epoch 1/100
-70/70 - 12s - loss: 0.7031 - acc: 0.5286 - val_loss: 1.1421 - val_acc: 0.5000
-Epoch 2/100
-70/70 - 12s - loss: 0.6769 - acc: 0.5929 - val_loss: 1.3491 - val_acc: 0.5000
-Epoch 3/100
-70/70 - 12s - loss: 0.6543 - acc: 0.6286 - val_loss: 1.5108 - val_acc: 0.5000
-Epoch 4/100
-70/70 - 12s - loss: 0.6236 - acc: 0.6714 - val_loss: 2.5255 - val_acc: 0.5000
-Epoch 5/100
-70/70 - 12s - loss: 0.6628 - acc: 0.6000 - val_loss: 1.8446 - val_acc: 0.5000
-Epoch 6/100
-70/70 - 12s - loss: 0.6621 - acc: 0.6071 - val_loss: 1.9661 - val_acc: 0.5000
-Epoch 7/100
-70/70 - 12s - loss: 0.6346 - acc: 0.6571 - val_loss: 2.8997 - val_acc: 0.5000
-Epoch 8/100
-70/70 - 12s - loss: 0.6501 - acc: 0.6071 - val_loss: 1.6101 - val_acc: 0.5000
-Epoch 9/100
-70/70 - 12s - loss: 0.6065 - acc: 0.6571 - val_loss: 0.8688 - val_acc: 0.6167
-Epoch 10/100
-70/70 - 12s - loss: 0.5970 - acc: 0.6714 - val_loss: 0.8802 - val_acc: 0.5167
-Epoch 11/100
-70/70 - 12s - loss: 0.5910 - acc: 0.7143 - val_loss: 0.7282 - val_acc: 0.6333
-Epoch 12/100
-70/70 - 12s - loss: 0.6147 - acc: 0.6500 - val_loss: 0.5828 - val_acc: 0.7500
-Epoch 13/100
-70/70 - 12s - loss: 0.5641 - acc: 0.7214 - val_loss: 0.7080 - val_acc: 0.6667
-Epoch 14/100
-70/70 - 12s - loss: 0.5664 - acc: 0.6857 - val_loss: 0.5641 - val_acc: 0.7000
-Epoch 15/100
-70/70 - 12s - loss: 0.5924 - acc: 0.6929 - val_loss: 0.7595 - val_acc: 0.6000
-Epoch 16/100
-70/70 - 12s - loss: 0.5389 - acc: 0.7071 - val_loss: 0.5719 - val_acc: 0.7833
-Epoch 17/100
-70/70 - 12s - loss: 0.5493 - acc: 0.6714 - val_loss: 0.5234 - val_acc: 0.7500
-Epoch 18/100
-70/70 - 12s - loss: 0.5050 - acc: 0.7786 - val_loss: 0.7359 - val_acc: 0.6000
-Epoch 19/100
-70/70 - 12s - loss: 0.5152 - acc: 0.7286 - val_loss: 0.6469 - val_acc: 0.6500
-Epoch 20/100
-70/70 - 12s - loss: 0.5015 - acc: 0.7786 - val_loss: 0.5651 - val_acc: 0.7333
-Epoch 21/100
-70/70 - 12s - loss: 0.4975 - acc: 0.7786 - val_loss: 0.8707 - val_acc: 0.5500
-Epoch 22/100
-70/70 - 12s - loss: 0.4470 - acc: 0.7714 - val_loss: 0.5577 - val_acc: 0.7500
-Epoch 23/100
-70/70 - 12s - loss: 0.5489 - acc: 0.7071 - val_loss: 0.9929 - val_acc: 0.6500
-Epoch 24/100
-70/70 - 12s - loss: 0.5045 - acc: 0.7357 - val_loss: 0.5891 - val_acc: 0.7333
-Epoch 25/100
-70/70 - 12s - loss: 0.5598 - acc: 0.7500 - val_loss: 0.5703 - val_acc: 0.7667
-Epoch 26/100
-70/70 - 12s - loss: 0.4822 - acc: 0.7429 - val_loss: 0.5631 - val_acc: 0.7333
-Epoch 27/100
-70/70 - 12s - loss: 0.5572 - acc: 0.7000 - val_loss: 0.6255 - val_acc: 0.6500
-Epoch 28/100
-70/70 - 12s - loss: 0.4694 - acc: 0.7643 - val_loss: 0.7007 - val_acc: 0.6833
-Epoch 29/100
-70/70 - 12s - loss: 0.4870 - acc: 0.7571 - val_loss: 1.7148 - val_acc: 0.5667
-Epoch 30/100
-70/70 - 12s - loss: 0.4794 - acc: 0.7500 - val_loss: 0.5744 - val_acc: 0.7333
-Epoch 31/100
-70/70 - 12s - loss: 0.4632 - acc: 0.7857 - val_loss: 0.7787 - val_acc: 0.5833
 
-<tensorflow.python.keras.callbacks.History at 0x7fea600ecef0>
+70/70 - 40s - 568ms/step - acc: 0.5786 - loss: 0.7128 - val_acc: 0.5000 - val_loss: 0.8744
+
+Epoch 2/100
+
+70/70 - 26s - 370ms/step - acc: 0.6000 - loss: 0.6760 - val_acc: 0.5000 - val_loss: 1.2741
+
+Epoch 3/100
+
+70/70 - 26s - 373ms/step - acc: 0.5643 - loss: 0.6768 - val_acc: 0.5000 - val_loss: 1.4767
+
+Epoch 4/100
+
+70/70 - 26s - 376ms/step - acc: 0.6643 - loss: 0.6671 - val_acc: 0.5000 - val_loss: 1.2609
+
+Epoch 5/100
+
+70/70 - 26s - 374ms/step - acc: 0.6714 - loss: 0.6274 - val_acc: 0.5667 - val_loss: 0.6470
+
+Epoch 6/100
+
+70/70 - 26s - 372ms/step - acc: 0.5929 - loss: 0.6492 - val_acc: 0.6667 - val_loss: 0.6022
+
+Epoch 7/100
+
+70/70 - 26s - 374ms/step - acc: 0.5929 - loss: 0.6601 - val_acc: 0.5667 - val_loss: 0.6788
+
+Epoch 8/100
+
+70/70 - 26s - 378ms/step - acc: 0.6000 - loss: 0.6559 - val_acc: 0.6667 - val_loss: 0.6090
+
+Epoch 9/100
+
+70/70 - 26s - 373ms/step - acc: 0.6357 - loss: 0.6423 - val_acc: 0.6000 - val_loss: 0.6535
+
+Epoch 10/100
+
+70/70 - 26s - 374ms/step - acc: 0.6500 - loss: 0.6127 - val_acc: 0.6500 - val_loss: 0.6204
+
+Epoch 11/100
+
+70/70 - 26s - 374ms/step - acc: 0.6714 - loss: 0.5994 - val_acc: 0.7000 - val_loss: 0.6218
+
+Epoch 12/100
+
+70/70 - 26s - 374ms/step - acc: 0.6714 - loss: 0.5980 - val_acc: 0.7167 - val_loss: 0.5069
+
+Epoch 13/100
+
+70/70 - 26s - 369ms/step - acc: 0.7214 - loss: 0.6003 - val_acc: 0.7833 - val_loss: 0.5182
+
+Epoch 14/100
+
+70/70 - 26s - 372ms/step - acc: 0.6643 - loss: 0.6076 - val_acc: 0.7167 - val_loss: 0.5613
+
+Epoch 15/100
+
+70/70 - 26s - 373ms/step - acc: 0.6571 - loss: 0.6359 - val_acc: 0.6167 - val_loss: 0.6184
+
+Epoch 16/100
+
+70/70 - 26s - 374ms/step - acc: 0.6429 - loss: 0.6053 - val_acc: 0.7167 - val_loss: 0.5258
+
+Epoch 17/100
+
+70/70 - 26s - 370ms/step - acc: 0.6786 - loss: 0.6119 - val_acc: 0.5667 - val_loss: 0.8481
+
+Epoch 18/100
+
+70/70 - 26s - 372ms/step - acc: 0.6286 - loss: 0.6298 - val_acc: 0.6667 - val_loss: 0.5709
+
+Epoch 19/100
+
+70/70 - 26s - 372ms/step - acc: 0.7214 - loss: 0.5979 - val_acc: 0.5833 - val_loss: 0.6730
+
+Epoch 20/100
+
+70/70 - 26s - 372ms/step - acc: 0.7571 - loss: 0.5224 - val_acc: 0.7167 - val_loss: 0.5710
+
+Epoch 21/100
+
+70/70 - 26s - 372ms/step - acc: 0.7357 - loss: 0.5606 - val_acc: 0.7167 - val_loss: 0.5444
+
+Epoch 22/100
+
+70/70 - 26s - 372ms/step - acc: 0.7357 - loss: 0.5334 - val_acc: 0.5667 - val_loss: 0.7919
+
+Epoch 23/100
+
+70/70 - 26s - 373ms/step - acc: 0.7071 - loss: 0.5337 - val_acc: 0.5167 - val_loss: 0.9527
+
+Epoch 24/100
+
+70/70 - 26s - 371ms/step - acc: 0.7071 - loss: 0.5635 - val_acc: 0.7167 - val_loss: 0.5333
+
+Epoch 25/100
+
+70/70 - 26s - 373ms/step - acc: 0.7643 - loss: 0.4787 - val_acc: 0.6333 - val_loss: 1.0172
+
+Epoch 26/100
+
+70/70 - 26s - 372ms/step - acc: 0.7357 - loss: 0.5535 - val_acc: 0.6500 - val_loss: 0.6926
+
+Epoch 27/100
+
+70/70 - 26s - 370ms/step - acc: 0.7286 - loss: 0.5608 - val_acc: 0.5000 - val_loss: 3.3032
+
+Epoch 28/100
+
+70/70 - 26s - 370ms/step - acc: 0.7429 - loss: 0.5436 - val_acc: 0.6500 - val_loss: 0.6438
+
+<keras.src.callbacks.history.History at 0x7fc5b923e810>
 
 ```
 </div>
@@ -598,7 +676,9 @@ for i, metric in enumerate(["acc", "loss"]):
 ```
 
 
+    
 ![png](/img/examples/vision/3D_image_classification/3D_image_classification_26_0.png)
+    
 
 
 ---
@@ -607,7 +687,7 @@ for i, metric in enumerate(["acc", "loss"]):
 
 ```python
 # Load best weights.
-model.load_weights("3d_image_classification.h5")
+model.load_weights("3d_image_classification.keras")
 prediction = model.predict(np.expand_dims(x_val[0], axis=0))[0]
 scores = [1 - prediction[0], prediction[0]]
 
@@ -619,10 +699,21 @@ for score, name in zip(scores, class_names):
     )
 ```
 
+    
+ 1/1 ━━━━━━━━━━━━━━━━━━━━ 0s 478ms/step
+
 <div class="k-default-codeblock">
 ```
-This model is 26.60 percent confident that CT scan is normal
-This model is 73.40 percent confident that CT scan is abnormal
+
+```
+</div>
+ 1/1 ━━━━━━━━━━━━━━━━━━━━ 0s 479ms/step
+
+
+<div class="k-default-codeblock">
+```
+This model is 32.99 percent confident that CT scan is normal
+This model is 67.01 percent confident that CT scan is abnormal
 
 ```
 </div>

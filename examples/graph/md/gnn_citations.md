@@ -400,7 +400,7 @@ def create_ffn(hidden_units, dropout_rate, name=None):
 
 
 ```python
-feature_names = set(papers.columns) - {"paper_id", "subject"}
+feature_names = list(set(papers.columns) - {"paper_id", "subject"})
 num_features = len(feature_names)
 num_classes = len(class_idx)
 
@@ -414,7 +414,7 @@ y_test = test_data["subject"]
 
 ### Implement a baseline classifier
 
-We add five FFN blocks with skip connections, so that we generate a baseline model with
+We add five FFN blocks with skip connections, so that we generatee a baseline model with
 roughly the same number of parameters as the GNN models to be built later.
 
 
@@ -928,6 +928,22 @@ and [Message Passing Neural Networks](https://arxiv.org/abs/1704.01212).
 
 ```python
 
+def create_gru(hidden_units, dropout_rate):
+    inputs = keras.layers.Input(shape=(2, hidden_units[0]))
+    x = inputs
+    for units in hidden_units:
+      x = layers.GRU(
+          units=units,
+          activation="tanh",
+          recurrent_activation="sigmoid",
+          return_sequences=True,
+          dropout=dropout_rate,
+          return_state=False,
+          recurrent_dropout=dropout_rate,
+      )(x)
+    return keras.Model(inputs=inputs, outputs=x)
+
+
 class GraphConvLayer(layers.Layer):
     def __init__(
         self,
@@ -946,16 +962,9 @@ class GraphConvLayer(layers.Layer):
         self.normalize = normalize
 
         self.ffn_prepare = create_ffn(hidden_units, dropout_rate)
-        if self.combination_type == "gated":
-            self.update_fn = layers.GRU(
-                units=hidden_units,
-                activation="tanh",
-                recurrent_activation="sigmoid",
-                dropout=dropout_rate,
-                return_state=True,
-                recurrent_dropout=dropout_rate,
-            )
-        else:
+        if self.combination_type == "gru":
+            self.update_fn = create_gru(hidden_units, dropout_rate)
+	else:
             self.update_fn = create_ffn(hidden_units, dropout_rate)
 
     def prepare(self, node_repesentations, weights=None):
@@ -1043,7 +1052,7 @@ as follows:
 1. Apply preprocessing using FFN to the node features to generate initial node representations.
 2. Apply one or more graph convolutional layer, with skip connections,  to the node representation
 to produce node embeddings.
-3. Apply post-processing using FFN to the node embeddings to generat the final node embeddings.
+3. Apply post-processing using FFN to the node embeddings to generate the final node embeddings.
 4. Feed the node embeddings in a Softmax layer to predict the node class.
 
 Each graph convolutional layer added captures information from a further level of neighbours.

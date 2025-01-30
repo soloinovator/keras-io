@@ -2,10 +2,11 @@
 Title: Timeseries classification from scratch
 Author: [hfawaz](https://github.com/hfawaz/)
 Date created: 2020/07/21
-Last modified: 2021/07/16
+Last modified: 2023/11/10
 Description: Training a timeseries classifier from scratch on the FordA dataset from the UCR/UEA archive.
 Accelerator: GPU
 """
+
 """
 ## Introduction
 
@@ -19,8 +20,7 @@ CSV timeseries files on disk. We demonstrate the workflow on the FordA dataset f
 ## Setup
 
 """
-
-from tensorflow import keras
+import keras
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -169,7 +169,7 @@ batch_size = 32
 
 callbacks = [
     keras.callbacks.ModelCheckpoint(
-        "best_model.h5", save_best_only=True, monitor="val_loss"
+        "best_model.keras", save_best_only=True, monitor="val_loss"
     ),
     keras.callbacks.ReduceLROnPlateau(
         monitor="val_loss", factor=0.5, patience=20, min_lr=0.0001
@@ -195,7 +195,7 @@ history = model.fit(
 ## Evaluate model on test data
 """
 
-model = keras.models.load_model("best_model.h5")
+model = keras.models.load_model("best_model.keras")
 
 test_loss, test_acc = model.evaluate(x_test, y_test)
 

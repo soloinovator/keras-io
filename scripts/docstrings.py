@@ -1,16 +1,18 @@
 """Lightweight fork of Keras-Autodocs.
 """
+
 import warnings
 import black
 import re
 import inspect
 import importlib
 import itertools
+import copy
 
-import render_tags
+import render_presets
 
 
-class TFKerasDocumentationGenerator:
+class KerasDocumentationGenerator:
     def __init__(self, project_url=None):
         self.project_url = project_url
 
@@ -93,9 +95,9 @@ class TFKerasDocumentationGenerator:
         if docstring:
             docstring = self.process_docstring(docstring)
             subblocks.append(docstring)
-        # Render preset table for KerasCV and KerasNLP
+        # Render preset table for KerasCV and KerasHub
         if element.endswith("from_preset"):
-            table = render_tags.render_table(import_object(element.rsplit(".", 1)[0]))
+            table = render_presets.render_table(import_object(element.rsplit(".", 1)[0]))
             if table is not None:
                 subblocks.append(table)
         return "\n\n".join(subblocks) + "\n\n----\n\n"
@@ -132,22 +134,23 @@ def make_source_link(cls, project_url):
     base_module = cls.__module__.split(".")[0]
     project_url = project_url[base_module]
     assert project_url.endswith("/"), f"{base_module} not found"
-    project_url_version = project_url.split("/")[-2].replace("v", "")
-    module_version = importlib.import_module(base_module).__version__
-    # TODO: reenable this check before merge.
-    if False and module_version != project_url_version:
+    project_url_version = project_url.split("/")[-2].removeprefix("v")
+    module_version = copy.copy(importlib.import_module(base_module).__version__)
+    if ".dev" in module_version:
+        module_version = project_url_version[: module_version.find(".dev")]
+    if module_version != project_url_version:
         raise RuntimeError(
             f"For project {base_module}, URL {project_url} "
             f"has version number {project_url_version} which does not match the "
             f"current imported package version {module_version}"
         )
     path = cls.__module__.replace(".", "/")
-    if base_module == "keras_nlp":
-        path = path.replace("src/", "")
+    if base_module in ("tf_keras",):
+        path = path.replace("/src/", "/")
     line = inspect.getsourcelines(cls)[-1]
     return (
         f'<span style="float:right;">'
-        f"[[source]]({project_url}/{path}.py#L{line})"
+        f"[[source]]({project_url}{path}.py#L{line})"
         f"</span>"
     )
 
@@ -178,6 +181,12 @@ def get_name(object_) -> str:
     return object_.__name__
 
 
+def get_function_name(function):
+    if hasattr(function, "__wrapped__"):
+        return get_function_name(function.__wrapped__)
+    return function.__name__
+
+
 def get_signature_start(function):
     """For the Dense layer, it should return the string 'keras.layers.Dense'"""
     if ismethod(function):
@@ -191,7 +200,7 @@ def get_signature_start(function):
                 f"It will not be included in the signature."
             )
             prefix = ""
-    return f"{prefix}{function.__name__}"
+    return f"{prefix}{get_function_name(function)}"
 
 
 def get_signature_end(function):
@@ -267,7 +276,8 @@ def get_code_blocks(docstring):
         index = tmp[3:].find("```") + 6
         snippet = tmp[:index]
         # Place marker in docstring for later reinjection.
-        token = f"$KERAS_AUTODOC_CODE_BLOCK_{len(code_blocks)}"
+        # Print the index with 4 digits so we know the symbol is unique.
+        token = f"$KERAS_AUTODOC_CODE_BLOCK_{len(code_blocks):04d}"
         docstring = docstring.replace(snippet, token)
         code_blocks[token] = snippet
         tmp = tmp[index:]
@@ -307,6 +317,7 @@ def get_google_style_sections(docstring):
     google_style_sections, docstring = get_google_style_sections_without_code(docstring)
     docstring = reinject_strings(docstring, code_blocks)
     for section_token, section in google_style_sections.items():
+        section = reinject_strings(section, code_blocks)
         google_style_sections[section_token] = reinject_strings(section, code_blocks)
     return google_style_sections, docstring
 
@@ -333,6 +344,8 @@ def to_markdown(google_style_section: str) -> str:
 def format_as_markdown_list(section_body):
     section_body = re.sub(r"\n([^ ].*?):", r"\n- __\1__:", section_body)
     section_body = re.sub(r"^([^ ].*?):", r"- __\1__:", section_body)
+    # Switch to 2-space indent so we can render nested lists.
+    section_body = section_body.replace("\n    ", "\n  ")
     return section_body
 
 

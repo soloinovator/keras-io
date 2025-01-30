@@ -30,8 +30,8 @@ you should import the following:
 
 ```python
 import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
+import keras
+from keras import layers
 ```
 
 Then access objects from these modules:
@@ -46,7 +46,7 @@ layers.Layer(...)
 layers.Conv2D(...)
 ```
 
-Note: do **not** use `import keras`. Use `from tensorflow import keras` instead.
+Note: As of `2.13` prefer `import keras` over `from tensorflow import keras`.
 
 
 ### Extra dependencies
@@ -173,7 +173,7 @@ There should be a conclusion section that recapitulates key takeaways from the e
 
 All code keywords should be formatted with backticks, e.g. `like_this` (standard Markdown code formatting).
 
-When refering to a function or method name, it should be followed with parens, like this: `my_function()` or `my_method()`.
+When referring to a function or method name, it should be followed with parens, like this: `my_function()` or `my_method()`.
 
 ### Mathematical notation
 
