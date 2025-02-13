@@ -42,7 +42,7 @@ task using Hugging Face Transformers on the `XSum` dataset loaded from Hugging F
 
 ```python
 !pip install transformers==4.20.0
-!pip install keras_nlp==0.3.0
+!pip install keras_hub==0.3.0
 !pip install datasets
 !pip install huggingface-hub
 !pip install nltk
@@ -272,7 +272,7 @@ Next we define our training and testing sets with which we will train our model.
 Datasets provides us with the `to_tf_dataset` method which will help us integrate our
 dataset with the `collator` defined above. The method expects certain parameters:
 
-- **columns**: the columns which will serve as our independant variables
+- **columns**: the columns which will serve as our independent variables
 - **batch_size**: our batch size for training
 - **shuffle**: whether we want to shuffle our dataset
 - **collate_fn**: our collator function
@@ -333,9 +333,9 @@ calculate the `ROUGE` score between the groud-truth and predictions.
 
 
 ```python
-import keras_nlp
+import keras_hub
 
-rouge_l = keras_nlp.metrics.RougeL()
+rouge_l = keras_hub.metrics.RougeL()
 
 
 def metric_fn(eval_predictions):
@@ -386,7 +386,7 @@ training dataset!
 ---
 ## Inference
 
-Now we will try to infer the model we trained on an arbitary article. To do so,
+Now we will try to infer the model we trained on an arbitrary article. To do so,
 we will use the `pipeline` method from Hugging Face Transformers. Hugging Face Transformers provides
 us with a variety of pipelines to choose from. For our task, we use the `summarization`
 pipeline.

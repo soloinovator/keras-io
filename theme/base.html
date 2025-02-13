@@ -8,6 +8,9 @@
   <meta name="description" content="Keras documentation">
   <meta name="author" content="Keras Team">
   <link rel="shortcut icon" href="https://keras.io/img/favicon.ico">
+  {% if relative_url %}
+  <link rel="canonical" href="https://keras.io{{relative_url}}" />
+  {% endif %}
 
   <!-- Social -->
   <meta property="og:title" content="Keras documentation: {{title}}">
@@ -59,9 +62,7 @@
   
     <div class="k-nav" id="nav-menu">
       <a href='{{base_url}}'><img src='{{base_url}}img/logo-small.png' class='logo-small' /></a>
-      <span class="gh-btn-container">
-        <a class="github-button" href="https://github.com/keras-team/keras" data-size="large" data-show-count="true" aria-label="Star keras-team/keras on GitHub">Star</a>
-      </span>
+
       <div class="nav flex-column nav-pills" role="tablist" aria-orientation="vertical">
 
         {% for item in nav %}

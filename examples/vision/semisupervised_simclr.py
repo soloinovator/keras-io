@@ -2,10 +2,12 @@
 Title: Semi-supervised image classification using contrastive pretraining with SimCLR
 Author: [András Béres](https://www.linkedin.com/in/andras-beres-789190210)
 Date created: 2021/04/24
-Last modified: 2021/04/24
+Last modified: 2024/03/04
 Description: Contrastive pretraining with SimCLR for semi-supervised image classification on the STL-10 dataset.
 Accelerator: GPU
+Converted to Keras 3 by: [Sitam Meur](https://github.com/sitamgithub-MSIT)
 """
+
 """
 ## Introduction
 
@@ -66,13 +68,25 @@ check out
 ## Setup
 """
 
+import os
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
+
+
+# Make sure we are able to handle large datasets
+import resource
+
+low, high = resource.getrlimit(resource.RLIMIT_NOFILE)
+resource.setrlimit(resource.RLIMIT_NOFILE, (high, high))
+
 import math
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import tensorflow_datasets as tfds
 
-from tensorflow import keras
-from tensorflow.keras import layers
+import keras
+from keras import ops
+from keras import layers
 
 """
 ## Hyperparameter setup
@@ -80,7 +94,6 @@ from tensorflow.keras import layers
 # Dataset hyperparameters
 unlabeled_dataset_size = 100000
 labeled_dataset_size = 5000
-image_size = 96
 image_channels = 3
 
 # Algorithm hyperparameters
@@ -90,7 +103,11 @@ width = 128
 temperature = 0.1
 # Stronger augmentations for contrastive, weaker ones for supervised training
 contrastive_augmentation = {"min_area": 0.25, "brightness": 0.6, "jitter": 0.2}
-classification_augmentation = {"min_area": 0.75, "brightness": 0.3, "jitter": 0.1}
+classification_augmentation = {
+    "min_area": 0.75,
+    "brightness": 0.3,
+    "jitter": 0.1,
+}
 
 """
 ## Dataset
@@ -110,13 +127,14 @@ def prepare_dataset():
         f"batch size is {unlabeled_batch_size} (unlabeled) + {labeled_batch_size} (labeled)"
     )
 
+    # Turning off shuffle to lower resource usage
     unlabeled_train_dataset = (
-        tfds.load("stl10", split="unlabelled", as_supervised=True, shuffle_files=True)
+        tfds.load("stl10", split="unlabelled", as_supervised=True, shuffle_files=False)
         .shuffle(buffer_size=10 * unlabeled_batch_size)
         .batch(unlabeled_batch_size)
     )
     labeled_train_dataset = (
-        tfds.load("stl10", split="train", as_supervised=True, shuffle_files=True)
+        tfds.load("stl10", split="train", as_supervised=True, shuffle_files=False)
         .shuffle(buffer_size=10 * labeled_batch_size)
         .batch(labeled_batch_size)
     )
@@ -145,9 +163,9 @@ following:
 
 - Cropping: forces the model to encode different parts of the same image
 similarly, we implement it with the
-[RandomTranslation](https://keras.io/api/layers/preprocessing_layers/image_preprocessing/random_translation/)
+[RandomTranslation](https://keras.io/api/layers/preprocessing_layers/image_augmentation/random_translation/)
 and
-[RandomZoom](https://keras.io/api/layers/preprocessing_layers/image_preprocessing/random_zoom/)
+[RandomZoom](https://keras.io/api/layers/preprocessing_layers/image_augmentation/random_zoom/)
 layers
 - Color jitter: prevents a trivial color histogram-based solution to the task by
 distorting color histograms. A principled way to implement that is by affine
@@ -173,6 +191,7 @@ class RandomColorAffine(layers.Layer):
     def __init__(self, brightness=0, jitter=0, **kwargs):
         super().__init__(**kwargs)
 
+        self.seed_generator = keras.random.SeedGenerator(1337)
         self.brightness = brightness
         self.jitter = jitter
 
@@ -183,22 +202,29 @@ class RandomColorAffine(layers.Layer):
 
     def call(self, images, training=True):
         if training:
-            batch_size = tf.shape(images)[0]
+            batch_size = ops.shape(images)[0]
 
             # Same for all colors
-            brightness_scales = 1 + tf.random.uniform(
-                (batch_size, 1, 1, 1), minval=-self.brightness, maxval=self.brightness
+            brightness_scales = 1 + keras.random.uniform(
+                (batch_size, 1, 1, 1),
+                minval=-self.brightness,
+                maxval=self.brightness,
+                seed=self.seed_generator,
             )
             # Different for all colors
-            jitter_matrices = tf.random.uniform(
-                (batch_size, 1, 3, 3), minval=-self.jitter, maxval=self.jitter
+            jitter_matrices = keras.random.uniform(
+                (batch_size, 1, 3, 3),
+                minval=-self.jitter,
+                maxval=self.jitter,
+                seed=self.seed_generator,
             )
 
             color_transforms = (
-                tf.eye(3, batch_shape=[batch_size, 1]) * brightness_scales
+                ops.tile(ops.expand_dims(ops.eye(3), axis=0), (batch_size, 1, 1, 1))
+                * brightness_scales
                 + jitter_matrices
             )
-            images = tf.clip_by_value(tf.matmul(images, color_transforms), 0, 1)
+            images = ops.clip(ops.matmul(images, color_transforms), 0, 1)
         return images
 
 
@@ -207,7 +233,6 @@ def get_augmenter(min_area, brightness, jitter):
     zoom_factor = 1.0 - math.sqrt(min_area)
     return keras.Sequential(
         [
-            keras.Input(shape=(image_size, image_size, image_channels)),
             layers.Rescaling(1 / 255),
             layers.RandomFlip("horizontal"),
             layers.RandomTranslation(zoom_factor / 2, zoom_factor / 2),
@@ -220,6 +245,7 @@ def get_augmenter(min_area, brightness, jitter):
 def visualize_augmentations(num_images):
     # Sample a batch from a dataset
     images = next(iter(train_dataset))[0][0][:num_images]
+
     # Apply augmentations
     augmented_images = zip(
         images,
@@ -255,7 +281,6 @@ visualize_augmentations(num_images=8)
 def get_encoder():
     return keras.Sequential(
         [
-            keras.Input(shape=(image_size, image_size, image_channels)),
             layers.Conv2D(width, kernel_size=3, strides=2, activation="relu"),
             layers.Conv2D(width, kernel_size=3, strides=2, activation="relu"),
             layers.Conv2D(width, kernel_size=3, strides=2, activation="relu"),
@@ -276,7 +301,6 @@ A baseline supervised model is trained using random initialization.
 # Baseline supervised training with random initialization
 baseline_model = keras.Sequential(
     [
-        keras.Input(shape=(image_size, image_size, image_channels)),
         get_augmenter(**classification_augmentation),
         get_encoder(),
         layers.Dense(10),
@@ -362,7 +386,8 @@ class ContrastiveModel(keras.Model):
         )
         # Single dense layer for linear probing
         self.linear_probe = keras.Sequential(
-            [layers.Input(shape=(width,)), layers.Dense(10)], name="linear_probe"
+            [layers.Input(shape=(width,)), layers.Dense(10)],
+            name="linear_probe",
         )
 
         self.encoder.summary()
@@ -399,19 +424,19 @@ class ContrastiveModel(keras.Model):
         # NT-Xent loss (normalized temperature-scaled cross entropy)
 
         # Cosine similarity: the dot product of the l2-normalized feature vectors
-        projections_1 = tf.math.l2_normalize(projections_1, axis=1)
-        projections_2 = tf.math.l2_normalize(projections_2, axis=1)
+        projections_1 = ops.normalize(projections_1, axis=1)
+        projections_2 = ops.normalize(projections_2, axis=1)
         similarities = (
-            tf.matmul(projections_1, projections_2, transpose_b=True) / self.temperature
+            ops.matmul(projections_1, ops.transpose(projections_2)) / self.temperature
         )
 
         # The similarity between the representations of two augmented views of the
         # same image should be higher than their similarity with other views
-        batch_size = tf.shape(projections_1)[0]
-        contrastive_labels = tf.range(batch_size)
+        batch_size = ops.shape(projections_1)[0]
+        contrastive_labels = ops.arange(batch_size)
         self.contrastive_accuracy.update_state(contrastive_labels, similarities)
         self.contrastive_accuracy.update_state(
-            contrastive_labels, tf.transpose(similarities)
+            contrastive_labels, ops.transpose(similarities)
         )
 
         # The temperature-scaled similarities are used as logits for cross-entropy
@@ -420,7 +445,7 @@ class ContrastiveModel(keras.Model):
             contrastive_labels, similarities, from_logits=True
         )
         loss_2_1 = keras.losses.sparse_categorical_crossentropy(
-            contrastive_labels, tf.transpose(similarities), from_logits=True
+            contrastive_labels, ops.transpose(similarities), from_logits=True
         )
         return (loss_1_2 + loss_2_1) / 2
 
@@ -428,7 +453,7 @@ class ContrastiveModel(keras.Model):
         (unlabeled_images, _), (labeled_images, labels) = data
 
         # Both labeled and unlabeled images are used, without labels
-        images = tf.concat((unlabeled_images, labeled_images), axis=0)
+        images = ops.concatenate((unlabeled_images, labeled_images), axis=0)
         # Each image is augmented twice, differently
         augmented_images_1 = self.contrastive_augmenter(images, training=True)
         augmented_images_2 = self.contrastive_augmenter(images, training=True)
@@ -513,7 +538,6 @@ a single randomly initalized fully connected classification layer on its top.
 # Supervised finetuning of the pretrained encoder
 finetuning_model = keras.Sequential(
     [
-        layers.Input(shape=(image_size, image_size, image_channels)),
         get_augmenter(**classification_augmentation),
         pretraining_model.encoder,
         layers.Dense(10),
@@ -545,7 +569,8 @@ def plot_training_curves(pretraining_history, finetuning_history, baseline_histo
     for metric_key, metric_name in zip(["acc", "loss"], ["accuracy", "loss"]):
         plt.figure(figsize=(8, 5), dpi=100)
         plt.plot(
-            baseline_history.history[f"val_{metric_key}"], label="supervised baseline"
+            baseline_history.history[f"val_{metric_key}"],
+            label="supervised baseline",
         )
         plt.plot(
             pretraining_history.history[f"val_p_{metric_key}"],

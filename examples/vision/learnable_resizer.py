@@ -2,10 +2,11 @@
 Title: Learning to Resize in Computer Vision
 Author: [Sayak Paul](https://twitter.com/RisingSayak)
 Date created: 2021/04/30
-Last modified: 2021/05/13
+Last modified: 2023/12/18
 Description: How to optimally learn representations of images for a given resolution.
 Accelerator: GPU
 """
+
 """
 It is a common belief that if we constrain vision models to perceive things as humans do,
 their performance can be improved. For example, in [this work](https://arxiv.org/abs/1811.12231),
@@ -32,16 +33,18 @@ MobileNetV2, and EfficientNets. In this example, we will implement the learnable
 resizing module as proposed in the paper and demonstrate that on the
 [Cats and Dogs dataset](https://www.microsoft.com/en-us/download/details.aspx?id=54765)
 using the [DenseNet-121](https://arxiv.org/abs/1608.06993) architecture.
-
-This example requires TensorFlow 2.4 or higher.
 """
 
 """
 ## Setup
 """
 
-from tensorflow.keras import layers
-from tensorflow import keras
+import os
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
+import keras
+from keras import ops
+from keras import layers
 import tensorflow as tf
 
 import tensorflow_datasets as tfds
@@ -91,8 +94,8 @@ train_ds, validation_ds = tfds.load(
 
 
 def preprocess_dataset(image, label):
-    image = tf.image.resize(image, (INP_SIZE[0], INP_SIZE[1]))
-    label = tf.one_hot(label, depth=2)
+    image = ops.image.resize(image, (INP_SIZE[0], INP_SIZE[1]))
+    label = ops.one_hot(label, num_classes=2)
     return (image, label)
 
 
@@ -132,6 +135,8 @@ def res_block(x):
     x = conv_block(x, 16, 3, 1, activation=None)
     return layers.Add()([inputs, x])
 
+    # Note: user can change num_res_blocks to >1 also if needed
+
 
 def get_learnable_resizer(filters=16, num_res_blocks=1, interpolation=INTERPOLATION):
     inputs = layers.Input(shape=[None, None, 3])
@@ -152,8 +157,11 @@ def get_learnable_resizer(filters=16, num_res_blocks=1, interpolation=INTERPOLAT
     bottleneck = layers.Resizing(*TARGET_SIZE, interpolation=interpolation)(x)
 
     # Residual passes.
-    for _ in range(num_res_blocks):
-        x = res_block(bottleneck)
+    # First res_block will get bottleneck output as input
+    x = res_block(bottleneck)
+    # Remaining res_blocks will get previous res_block output as input
+    for _ in range(num_res_blocks - 1):
+        x = res_block(x)
 
     # Projection.
     x = layers.Conv2D(
@@ -168,7 +176,7 @@ def get_learnable_resizer(filters=16, num_res_blocks=1, interpolation=INTERPOLAT
     x = layers.Conv2D(filters=3, kernel_size=7, strides=1, padding="same")(x)
     final_resize = layers.Add()([naive_resize, x])
 
-    return tf.keras.Model(inputs, final_resize, name="learnable_resizer")
+    return keras.Model(inputs, final_resize, name="learnable_resizer")
 
 
 learnable_resizer = get_learnable_resizer()
@@ -204,7 +212,7 @@ for i, image in enumerate(sample_images[:6]):
 
 
 def get_model():
-    backbone = tf.keras.applications.DenseNet121(
+    backbone = keras.applications.DenseNet121(
         weights=None,
         include_top=True,
         classes=2,
@@ -217,7 +225,7 @@ def get_model():
     x = learnable_resizer(x)
     outputs = backbone(x)
 
-    return tf.keras.Model(inputs, outputs)
+    return keras.Model(inputs, outputs)
 
 
 """
@@ -291,7 +299,7 @@ Now, the authors argue that using the second option is better because it helps t
 learn how to adjust the representations better with respect to the given resolution.
 Since the results purely are empirical, a few more experiments such as analyzing the
 cross-channel interaction would have been even better. It is worth noting that elements
-like [Squeeze and Excitation (SE) blocks](https://arxiv.org/abs/1709.01507), [Global Context (GC) blocks](https://arxiv.org/pdf/1904.11492) also add a few
+like [Squeeze and Excitation (SE) blocks](https://arxiv.org/abs/1709.01507), [Global Context (GC) blocks](https://arxiv.org/abs/1904.11492) also add a few
 parameters to an existing network but they are known to help a network process
 information in systematic ways to improve the overall performance.
 """
@@ -308,6 +316,6 @@ discard the texture information.
 important for tasks like object detection and segmentation.
 
 * There is another closely related topic on ***adaptive image resizing*** that attempts
-to resize images/feature maps adaptively during training. [EfficientV2](https://arxiv.org/pdf/2104.00298)
+to resize images/feature maps adaptively during training. [EfficientV2](https://arxiv.org/abs/2104.00298)
 uses this idea.
 """

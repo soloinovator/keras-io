@@ -2,9 +2,10 @@
 Title: Classification with Gated Residual and Variable Selection Networks
 Author: [Khalid Salama](https://www.linkedin.com/in/khalid-salama-24403144/)
 Date created: 2021/02/10
-Last modified: 2021/02/10
+Last modified: 2025/01/08
 Description: Using Gated Residual and Variable Selection Networks for income level prediction.
 Accelerator: GPU
+Converted to Keras 3 by: [Sitam Meur](https://github.com/sitamgithub-MSIT) and made backend-agnostic by: [Humbulani Ndou](https://github.com/Humbulani1234)
 """
 
 """
@@ -45,12 +46,16 @@ and 34 categorical features.
 ## Setup
 """
 
-import math
+import os
+import subprocess
+import tarfile
+
+os.environ["KERAS_BACKEND"] = "torch"  # or jax, or tensorflow
+
 import numpy as np
 import pandas as pd
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
+import keras
+from keras import layers
 
 """
 ## Prepare the data
@@ -104,11 +109,41 @@ CSV_HEADER = [
     "income_level",
 ]
 
-data_url = "https://archive.ics.uci.edu/ml/machine-learning-databases/census-income-mld/census-income.data.gz"
-data = pd.read_csv(data_url, header=None, names=CSV_HEADER)
+data_url = "https://archive.ics.uci.edu/static/public/117/census+income+kdd.zip"
+keras.utils.get_file(origin=data_url, extract=True)
 
-test_data_url = "https://archive.ics.uci.edu/ml/machine-learning-databases/census-income-mld/census-income.test.gz"
-test_data = pd.read_csv(test_data_url, header=None, names=CSV_HEADER)
+"""
+Determine the downloaded .tar.gz file path and
+extract the files from the downloaded .tar.gz file
+"""
+
+extracted_path = os.path.join(
+    os.path.expanduser("~"), ".keras", "datasets", "census+income+kdd.zip"
+)
+for root, dirs, files in os.walk(extracted_path):
+    for file in files:
+        if file.endswith(".tar.gz"):
+            tar_gz_path = os.path.join(root, file)
+            with tarfile.open(tar_gz_path, "r:gz") as tar:
+                tar.extractall(path=root)
+
+train_data_path = os.path.join(
+    os.path.expanduser("~"),
+    ".keras",
+    "datasets",
+    "census+income+kdd.zip",
+    "census-income.data",
+)
+test_data_path = os.path.join(
+    os.path.expanduser("~"),
+    ".keras",
+    "datasets",
+    "census+income+kdd.zip",
+    "census-income.test",
+)
+
+data = pd.read_csv(train_data_path, header=None, names=CSV_HEADER)
+test_data = pd.read_csv(test_data_path, header=None, names=CSV_HEADER)
 
 print(f"Data shape: {data.shape}")
 print(f"Test data shape: {test_data.shape}")
@@ -184,9 +219,12 @@ FEATURE_NAMES = NUMERIC_FEATURE_NAMES + list(
 )
 # Feature default values.
 COLUMN_DEFAULTS = [
-    [0.0]
-    if feature_name in NUMERIC_FEATURE_NAMES + [TARGET_FEATURE_NAME, WEIGHT_COLUMN_NAME]
-    else ["NA"]
+    (
+        [0.0]
+        if feature_name
+        in NUMERIC_FEATURE_NAMES + [TARGET_FEATURE_NAME, WEIGHT_COLUMN_NAME]
+        else ["NA"]
+    )
     for feature_name in CSV_HEADER
 ]
 
@@ -198,17 +236,38 @@ labels into a [`tf.data.Dataset`](https://www.tensorflow.org/guide/datasets) for
 training and evaluation.
 """
 
-from tensorflow.keras.layers import StringLookup
+# Tensorflow required for tf.data.Datasets
+import tensorflow as tf
 
 
+# We process our datasets elements here (categorical) and convert them to indices to avoid this step
+# during model training since only tensorflow support strings.
 def process(features, target):
     for feature_name in features:
         if feature_name in CATEGORICAL_FEATURES_WITH_VOCABULARY:
             # Cast categorical feature values to string.
-            features[feature_name] = tf.cast(features[feature_name], tf.dtypes.string)
+            features[feature_name] = tf.cast(features[feature_name], "string")
+            vocabulary = CATEGORICAL_FEATURES_WITH_VOCABULARY[feature_name]
+            # Create a lookup to convert a string values to an integer indices.
+            # Since we are not using a mask token nor expecting any out of vocabulary
+            # (oov) token, we set mask_token to None and  num_oov_indices to 0.
+            index = layers.StringLookup(
+                vocabulary=vocabulary,
+                mask_token=None,
+                num_oov_indices=0,
+                output_mode="int",
+            )
+            # Convert the string input values into integer indices.
+            value_index = index(features[feature_name])
+            features[feature_name] = value_index
+        else:
+            # Do nothing for numerical features
+            pass
+
     # Get the instance weight.
     weight = features.pop(WEIGHT_COLUMN_NAME)
-    return features, target, weight
+    # Change features from OrderedDict to Dict to match Inputs as they are Dict.
+    return dict(features), target, weight
 
 
 def get_dataset_from_csv(csv_file_path, shuffle=False, batch_size=128):
@@ -234,54 +293,17 @@ def get_dataset_from_csv(csv_file_path, shuffle=False, batch_size=128):
 def create_model_inputs():
     inputs = {}
     for feature_name in FEATURE_NAMES:
-        if feature_name in NUMERIC_FEATURE_NAMES:
+        if feature_name in CATEGORICAL_FEATURES_WITH_VOCABULARY:
+            # Make them int64, they are Categorical (whole units)
             inputs[feature_name] = layers.Input(
-                name=feature_name, shape=(), dtype=tf.float32
+                name=feature_name, shape=(), dtype="int64"
             )
         else:
+            # Make them float32, they are Real numbers
             inputs[feature_name] = layers.Input(
-                name=feature_name, shape=(), dtype=tf.string
+                name=feature_name, shape=(), dtype="float32"
             )
     return inputs
-
-
-"""
-## Encode input features
-
-For categorical features, we encode them using `layers.Embedding` using the
-`encoding_size` as the embedding dimensions. For the numerical features,
-we apply linear transformation using `layers.Dense` to project each feature into
-`encoding_size`-dimensional vector. Thus, all the encoded features will have the
-same dimensionality.
-
-"""
-
-
-def encode_inputs(inputs, encoding_size):
-    encoded_features = []
-    for feature_name in inputs:
-        if feature_name in CATEGORICAL_FEATURES_WITH_VOCABULARY:
-            vocabulary = CATEGORICAL_FEATURES_WITH_VOCABULARY[feature_name]
-            # Create a lookup to convert a string values to an integer indices.
-            # Since we are not using a mask token nor expecting any out of vocabulary
-            # (oov) token, we set mask_token to None and  num_oov_indices to 0.
-            index = StringLookup(
-                vocabulary=vocabulary, mask_token=None, num_oov_indices=0
-            )
-            # Convert the string input values into integer indices.
-            value_index = index(inputs[feature_name])
-            # Create an embedding layer with the specified dimensions
-            embedding_ecoder = layers.Embedding(
-                input_dim=len(vocabulary), output_dim=encoding_size
-            )
-            # Convert the index values to embedding representations.
-            encoded_feature = embedding_ecoder(value_index)
-        else:
-            # Project the numeric feature to encoding_size using linear transformation.
-            encoded_feature = tf.expand_dims(inputs[feature_name], -1)
-            encoded_feature = layers.Dense(units=encoding_size)(encoded_feature)
-        encoded_features.append(encoded_feature)
-    return encoded_features
 
 
 """
@@ -300,6 +322,10 @@ class GatedLinearUnit(layers.Layer):
 
     def call(self, inputs):
         return self.linear(inputs) * self.sigmoid(inputs)
+
+    # Remove build warnings
+    def build(self):
+        self.built = True
 
 
 """
@@ -336,6 +362,10 @@ class GatedResidualNetwork(layers.Layer):
         x = self.layer_norm(x)
         return x
 
+    # Remove build warnings
+    def build(self):
+        self.built = True
+
 
 """
 ## Implement the Variable Selection Network
@@ -349,12 +379,35 @@ produce feature weights.
 
 Note that the output of the VSN is [batch_size, encoding_size], regardless of the
 number of the input features.
+
+For categorical features, we encode them using `layers.Embedding` using the
+`encoding_size` as the embedding dimensions. For the numerical features,
+we apply linear transformation using `layers.Dense` to project each feature into
+`encoding_size`-dimensional vector. Thus, all the encoded features will have the
+same dimensionality.
+
 """
 
 
 class VariableSelection(layers.Layer):
     def __init__(self, num_features, units, dropout_rate):
         super().__init__()
+        self.units = units
+        # Create an embedding layers with the specified dimensions
+        self.embeddings = dict()
+        for input_ in CATEGORICAL_FEATURES_WITH_VOCABULARY:
+            vocabulary = CATEGORICAL_FEATURES_WITH_VOCABULARY[input_]
+            embedding_encoder = layers.Embedding(
+                input_dim=len(vocabulary), output_dim=self.units, name=input_
+            )
+            self.embeddings[input_] = embedding_encoder
+
+        # Projection layers for numeric features
+        self.proj_layer = dict()
+        for input_ in NUMERIC_FEATURE_NAMES:
+            proj_layer = layers.Dense(units=self.units)
+            self.proj_layer[input_] = proj_layer
+
         self.grns = list()
         # Create a GRN for each feature independently
         for idx in range(num_features):
@@ -365,17 +418,35 @@ class VariableSelection(layers.Layer):
         self.softmax = layers.Dense(units=num_features, activation="softmax")
 
     def call(self, inputs):
-        v = layers.concatenate(inputs)
+        concat_inputs = []
+        for input_ in inputs:
+            if input_ in CATEGORICAL_FEATURES_WITH_VOCABULARY:
+                max_index = self.embeddings[input_].input_dim - 1  # Clamp the indices
+                # torch had some index errors during embedding hence the clip function
+                embedded_feature = self.embeddings[input_](
+                    keras.ops.clip(inputs[input_], 0, max_index)
+                )
+                concat_inputs.append(embedded_feature)
+            else:
+                # Project the numeric feature to encoding_size using linear transformation.
+                proj_feature = keras.ops.expand_dims(inputs[input_], -1)
+                proj_feature = self.proj_layer[input_](proj_feature)
+                concat_inputs.append(proj_feature)
+
+        v = layers.concatenate(concat_inputs)
         v = self.grn_concat(v)
-        v = tf.expand_dims(self.softmax(v), axis=-1)
-
+        v = keras.ops.expand_dims(self.softmax(v), axis=-1)
         x = []
-        for idx, input in enumerate(inputs):
+        for idx, input in enumerate(concat_inputs):
             x.append(self.grns[idx](input))
-        x = tf.stack(x, axis=1)
+        x = keras.ops.stack(x, axis=1)
+        return keras.ops.squeeze(
+            keras.ops.matmul(keras.ops.transpose(v, axes=[0, 2, 1]), x), axis=1
+        )
 
-        outputs = tf.squeeze(tf.matmul(v, x, transpose_a=True), axis=1)
-        return outputs
+    # to remove the build warnings
+    def build(self):
+        self.built = True
 
 
 """
@@ -385,14 +456,10 @@ class VariableSelection(layers.Layer):
 
 def create_model(encoding_size):
     inputs = create_model_inputs()
-    feature_list = encode_inputs(inputs, encoding_size)
-    num_features = len(feature_list)
-
-    features = VariableSelection(num_features, encoding_size, dropout_rate)(
-        feature_list
-    )
-
+    num_features = len(inputs)
+    features = VariableSelection(num_features, encoding_size, dropout_rate)(inputs)
     outputs = layers.Dense(units=1, activation="sigmoid")(features)
+    # Functional model
     model = keras.Model(inputs=inputs, outputs=outputs)
     return model
 
@@ -404,7 +471,7 @@ def create_model(encoding_size):
 learning_rate = 0.001
 dropout_rate = 0.15
 batch_size = 265
-num_epochs = 20
+num_epochs = 20  # may be adjusted to a desired value
 encoding_size = 16
 
 model = create_model(encoding_size)
@@ -414,9 +481,16 @@ model.compile(
     metrics=[keras.metrics.BinaryAccuracy(name="accuracy")],
 )
 
+"""
+Let's visualize our connectivity graph:
+"""
+
+# `rankdir='LR'` is to make the graph horizontal.
+keras.utils.plot_model(model, show_shapes=True, show_layer_names=True, rankdir="LR")
+
 
 # Create an early stopping callback.
-early_stopping = tf.keras.callbacks.EarlyStopping(
+early_stopping = keras.callbacks.EarlyStopping(
     monitor="val_loss", patience=5, restore_best_weights=True
 )
 

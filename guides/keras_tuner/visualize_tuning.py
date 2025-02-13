@@ -19,7 +19,7 @@ hyperparameters in each trial for the user to monitor the progress. However,
 reading the logs is not intuitive enough to sense the influences of
 hyperparameters have on the results, Therefore, we provide a method to
 visualize the hyperparameter values and the corresponding evaluation results
-with interactive figures using TensorBaord.
+with interactive figures using TensorBoard.
 
 [TensorBoard](https://www.tensorflow.org/tensorboard) is a useful tool for
 visualizing the machine learning experiments.  It can monitor the losses and
@@ -37,8 +37,8 @@ The first step is to download and format the data.
 
 import numpy as np
 import keras_tuner
-from tensorflow import keras
-from tensorflow.keras import layers
+import keras
+from keras import layers
 
 (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
 # Normalize the pixel values to the range of [0, 1].

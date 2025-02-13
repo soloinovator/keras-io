@@ -6,13 +6,14 @@ Last modified: 2020/05/03
 Description: Train a 2-layer bidirectional LSTM on the IMDB movie review sentiment classification dataset.
 Accelerator: GPU
 """
+
 """
 ## Setup
 """
 
 import numpy as np
-from tensorflow import keras
-from tensorflow.keras import layers
+import keras
+from keras import layers
 
 max_features = 20000  # Only consider the top 20k words
 maxlen = 200  # Only consider the first 200 words of each movie review

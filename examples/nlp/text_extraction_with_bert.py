@@ -6,6 +6,7 @@ Last modified: 2020/05/23
 Description: Fine tune pretrained BERT from HuggingFace Transformers on SQuAD.
 Accelerator: TPU
 """
+
 """
 ## Introduction
 
@@ -31,7 +32,7 @@ We fine-tune a BERT model to perform this task as follows:
 
 **References:**
 
-- [BERT](https://arxiv.org/pdf/1810.04805.pdf)
+- [BERT](https://arxiv.org/abs/1810.04805)
 - [SQuAD](https://arxiv.org/abs/1606.05250)
 """
 """

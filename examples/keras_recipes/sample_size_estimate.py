@@ -33,17 +33,20 @@ for the construction of a mean and confidence interval for the observed performa
 ## Setup
 """
 
+import os
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
+
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
-from tensorflow import keras
+import keras
+from keras import layers
 import tensorflow_datasets as tfds
-from tensorflow.keras import layers
 
 # Define seed and fixed variables
 seed = 42
-tf.random.set_seed(seed)
-np.random.seed(seed)
+keras.utils.set_random_seed(seed)
 AUTO = tf.data.AUTOTUNE
 
 """
@@ -180,8 +183,8 @@ def compile_and_train(
 
     Arguments:
         model: Uncompiled Keras model.
-        training_data: NumPy Array, trainig data.
-        training_labels: NumPy Array, trainig labels.
+        training_data: NumPy Array, training data.
+        training_labels: NumPy Array, training labels.
         metrics: Keras/TF metrics, requires at least 'auc' metric (default is
                 `[keras.metrics.AUC(name='auc'), 'acc']`).
         optimizer: Keras/TF optimizer (defaults is `keras.optimizers.Adam()).
@@ -261,8 +264,8 @@ def train_model(training_data, training_labels):
     - Train for 20 more epochs.
 
     Arguments:
-        training_data: NumPy Array, trainig data.
-        training_labels: NumPy Array, trainig labels.
+        training_data: NumPy Array, training data.
+        training_labels: NumPy Array, training labels.
 
     Returns:
         Model accuracy.
@@ -389,7 +392,7 @@ def fit_and_predict(train_acc, sample_sizes, pred_sample_size):
                         fitted learning curve.
     """
     x = sample_sizes
-    mean_acc = [np.mean(i) for i in train_acc]
+    mean_acc = tf.convert_to_tensor([np.mean(i) for i in train_acc])
     error = [np.std(i) for i in train_acc]
 
     # Define mean squared error cost and exponential curve fit functions
@@ -426,7 +429,7 @@ def fit_and_predict(train_acc, sample_sizes, pred_sample_size):
     fig, ax = plt.subplots(figsize=(12, 6))
     ax.errorbar(x, mean_acc, yerr=error, fmt="o", label="Mean acc & std dev.")
     ax.plot(x_cont, exp_func(x_cont, a, b), "r-", label="Fitted exponential curve.")
-    ax.set_ylabel("Model clasification accuracy.", fontsize=12)
+    ax.set_ylabel("Model classification accuracy.", fontsize=12)
     ax.set_xlabel("Training sample size.", fontsize=12)
     ax.set_xticks(np.append(x, pred_sample_size))
     ax.set_yticks(np.append(mean_acc, max_acc))

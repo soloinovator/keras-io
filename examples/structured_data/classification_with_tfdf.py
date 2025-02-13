@@ -68,7 +68,7 @@ and 34 categorical features.
 First we load the data from the UCI Machine Learning Repository into a Pandas DataFrame.
 """
 
-BASE_PATH = "https://archive.ics.uci.edu/ml/machine-learning-databases/census-income-mld/census-income"
+BASE_PATH = "https://kdd.ics.uci.edu/databases/census-income/census-income"
 CSV_HEADER = [
     l.decode("utf-8").split(":")[0].replace(" ", "_")
     for l in urllib.request.urlopen(f"{BASE_PATH}.names")
@@ -361,15 +361,15 @@ class BinaryTargetEncoding(layers.Layer):
 
         # Filter the data where the target label is positive.
         positive_indices = tf.where(condition=target_values)
-        postive_feature_values = tf.gather_nd(
+        positive_feature_values = tf.gather_nd(
             params=feature_values, indices=positive_indices
         )
         # Compute how many times each feature value occurred with a positive target label.
         positive_frequency = tf.math.unsorted_segment_sum(
             data=tf.ones(
-                shape=(postive_feature_values.shape[0], 1), dtype=tf.dtypes.float64
+                shape=(positive_feature_values.shape[0], 1), dtype=tf.dtypes.float64
             ),
-            segment_ids=postive_feature_values,
+            segment_ids=positive_feature_values,
             num_segments=self.vocabulary_size,
         )
 

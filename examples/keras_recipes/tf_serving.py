@@ -4,7 +4,7 @@ Author: [Dimitre Oliveira](https://www.linkedin.com/in/dimitre-oliveira-7a1a0113
 Date created: 2023/01/02
 Last modified: 2023/01/02
 Description: How to serve TensorFlow models with TensorFlow Serving.
-Accelerator: NONE
+Accelerator: None
 """
 
 """
@@ -55,11 +55,15 @@ TensorFlow.
 """
 
 import os
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
+
 import json
 import shutil
 import requests
 import numpy as np
 import tensorflow as tf
+import keras
 import matplotlib.pyplot as plt
 
 """
@@ -70,7 +74,7 @@ from the [Keras applications](https://keras.io/api/applications/), this is the
 model that we are going to serve.
 """
 
-model = tf.keras.applications.MobileNet()
+model = keras.applications.MobileNet()
 
 """
 ## Preprocessing
@@ -129,7 +133,7 @@ imagenet_labels_url = (
     "https://storage.googleapis.com/download.tensorflow.org/data/ImageNetLabels.txt"
 )
 response = requests.get(imagenet_labels_url)
-# Skiping backgroung class
+# Skipping background class
 labels = [x for x in response.text.split("\n") if x != ""][1:]
 # Convert the labels to the TensorFlow data format
 tf_labels = tf.constant(labels, dtype=tf.string)
@@ -319,7 +323,10 @@ servable by not specifying a particular version.
 """
 
 data = json.dumps(
-    {"signature_name": "serving_default", "instances": batched_img.numpy().tolist()}
+    {
+        "signature_name": "serving_default",
+        "instances": batched_img.numpy().tolist(),
+    }
 )
 url = "http://localhost:8501/v1/models/model:predict"
 
@@ -362,7 +369,7 @@ channel = grpc.insecure_channel("localhost:8500")
 
 """
 ```shell
-!pip install -q tensorflow_serving_api
+pip install -q tensorflow_serving_api
 ```
 
 ```python
@@ -489,7 +496,10 @@ models that share the same base parent folder.
 """
 
 data = json.dumps(
-    {"signature_name": "serving_default", "instances": batched_raw_img.numpy().tolist()}
+    {
+        "signature_name": "serving_default",
+        "instances": batched_raw_img.numpy().tolist(),
+    }
 )
 url_sig = "http://localhost:8501/v1/models/model/versions/2:predict"
 
@@ -529,6 +539,7 @@ print(f"Predicted class: {grpc_outputs}")
 ```
 
 outputs:
+
 ```
 gRPC output shape: (1, 1)
 Predicted class: [[b'banana']]
